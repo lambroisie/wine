@@ -519,11 +519,11 @@ static inline struct testfilter *impl_from_BaseFilter(struct strmbase_filter *if
     return CONTAINING_RECORD(iface, struct testfilter, filter);
 }
 
-static IPin *testfilter_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *testfilter_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     struct testfilter *filter = impl_from_BaseFilter(iface);
     if (!index)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     return NULL;
 }
 
@@ -574,14 +574,14 @@ static HRESULT WINAPI testsource_AttemptConnection(struct strmbase_source *iface
 
     iface->pin.peer = peer;
     IPin_AddRef(peer);
-    CopyMediaType(&iface->pin.mtCurrent, mt);
+    CopyMediaType(&iface->pin.mt, mt);
 
     if (FAILED(hr = IPin_ReceiveConnection(peer, &iface->pin.IPin_iface, mt)))
     {
         ok(hr == VFW_E_TYPE_NOT_ACCEPTED, "Got hr %#x.\n", hr);
         IPin_Release(peer);
         iface->pin.peer = NULL;
-        FreeMediaType(&iface->pin.mtCurrent);
+        FreeMediaType(&iface->pin.mt);
     }
 
     return hr;
@@ -744,7 +744,7 @@ static void test_filter_state(IMemInputPin *input, IFilterGraph2 *graph)
     hr = IMediaControl_GetState(control, 1000, &state);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
 
-    todo_wine ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
 
     hr = IMediaControl_Stop(control);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
@@ -777,7 +777,7 @@ static void test_filter_state(IMemInputPin *input, IFilterGraph2 *graph)
     hr = IMediaControl_GetState(control, 1000, &state);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
 
-    todo_wine ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
 
     hr = IMediaControl_Run(control);
     todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
@@ -803,7 +803,7 @@ static void test_filter_state(IMemInputPin *input, IFilterGraph2 *graph)
     hr = IMediaControl_GetState(control, 1000, &state);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
 
-    todo_wine ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
 
     hr = IMediaControl_Run(control);
     todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
@@ -868,7 +868,7 @@ static void test_flushing(IPin *pin, IMemInputPin *input, IFilterGraph2 *graph)
     ok(hr == S_FALSE, "Got hr %#x.\n", hr);
 
     thread = send_frame(input);
-    todo_wine ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
 
     hr = IMediaControl_GetState(control, 0, &state);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
@@ -892,7 +892,7 @@ static void test_flushing(IPin *pin, IMemInputPin *input, IFilterGraph2 *graph)
     todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
 
     thread = send_frame(input);
-    todo_wine ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
 
     hr = IMediaControl_Run(control);
     todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);

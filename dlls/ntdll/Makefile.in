@@ -26,6 +26,7 @@ C_SRCS = \
 	large_int.c \
 	loader.c \
 	loadorder.c \
+	locale.c \
 	misc.c \
 	nt.c \
 	om.c \

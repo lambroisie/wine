@@ -29,11 +29,6 @@ static const WCHAR wcsOutputPinName[] = {'O','u','t',0};
 static const IPinVtbl TransformFilter_InputPin_Vtbl;
 static const IPinVtbl TransformFilter_OutputPin_Vtbl;
 
-static inline TransformFilter *impl_from_IBaseFilter( IBaseFilter *iface )
-{
-    return CONTAINING_RECORD(iface, TransformFilter, filter.IBaseFilter_iface);
-}
-
 static inline TransformFilter *impl_from_strmbase_filter(struct strmbase_filter *iface)
 {
     return CONTAINING_RECORD(iface, TransformFilter, filter);
@@ -57,12 +52,22 @@ static HRESULT sink_query_accept(struct strmbase_pin *iface, const AM_MEDIA_TYPE
     return S_OK;
 }
 
-static HRESULT WINAPI TransformFilter_Input_Receive(BaseInputPin *This, IMediaSample *pInSample)
+static HRESULT WINAPI TransformFilter_Input_Receive(struct strmbase_sink *This, IMediaSample *pInSample)
 {
     TransformFilter *pTransform = impl_from_sink_IPin(&This->pin.IPin_iface);
     HRESULT hr;
 
     TRACE("%p\n", This);
+
+    /* We do not expect pin connection state to change while the filter is
+     * running. This guarantee is necessary, since otherwise we would have to
+     * take the filter lock, and we can't take the filter lock from a streaming
+     * thread. */
+    if (!pTransform->source.pMemInputPin)
+    {
+        WARN("Source is not connected, returning VFW_E_NOT_CONNECTED.\n");
+        return VFW_E_NOT_CONNECTED;
+    }
 
     EnterCriticalSection(&pTransform->csReceive);
     if (pTransform->filter.state == State_Stopped)
@@ -71,7 +76,7 @@ static HRESULT WINAPI TransformFilter_Input_Receive(BaseInputPin *This, IMediaSa
         return VFW_E_WRONG_STATE;
     }
 
-    if (This->end_of_stream || This->flushing)
+    if (This->flushing)
     {
         LeaveCriticalSection(&pTransform->csReceive);
         return S_FALSE;
@@ -119,14 +124,14 @@ static HRESULT source_get_media_type(struct strmbase_pin *This, unsigned int iPo
     return S_OK;
 }
 
-static IPin *transform_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *transform_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     TransformFilter *filter = impl_from_strmbase_filter(iface);
 
     if (index == 0)
-        return &filter->sink.pin.IPin_iface;
+        return &filter->sink.pin;
     else if (index == 1)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     return NULL;
 }
 
@@ -160,7 +165,6 @@ static HRESULT transform_init_stream(struct strmbase_filter *iface)
 
     EnterCriticalSection(&filter->csReceive);
 
-    filter->sink.end_of_stream = FALSE;
     if (filter->pFuncsTable->pfnStartStreaming)
         hr = filter->pFuncsTable->pfnStartStreaming(filter);
     if (SUCCEEDED(hr))
@@ -178,7 +182,6 @@ static HRESULT transform_cleanup_stream(struct strmbase_filter *iface)
 
     EnterCriticalSection(&filter->csReceive);
 
-    filter->sink.end_of_stream = FALSE;
     if (filter->pFuncsTable->pfnStopStreaming)
         hr = filter->pFuncsTable->pfnStopStreaming(filter);
     if (SUCCEEDED(hr))
@@ -210,7 +213,7 @@ static HRESULT sink_query_interface(struct strmbase_pin *iface, REFIID iid, void
     return S_OK;
 }
 
-static const BaseInputPinFuncTable tf_input_BaseInputFuncTable =
+static const struct strmbase_sink_ops sink_ops =
 {
     .base.pin_query_accept = sink_query_accept,
     .base.pin_get_media_type = strmbase_pin_get_media_type,
@@ -353,7 +356,7 @@ static HRESULT strmbase_transform_init(IUnknown *outer, const CLSID *clsid,
     ZeroMemory(&filter->pmt, sizeof(filter->pmt));
 
     strmbase_sink_init(&filter->sink, &TransformFilter_InputPin_Vtbl, &filter->filter,
-            wcsInputPinName, &tf_input_BaseInputFuncTable, NULL);
+            wcsInputPinName, &sink_ops, NULL);
 
     strmbase_source_init(&filter->source, &TransformFilter_OutputPin_Vtbl, &filter->filter,
             wcsOutputPinName, &source_ops);

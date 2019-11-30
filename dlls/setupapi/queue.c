@@ -338,7 +338,7 @@ static void get_source_info( HINF hinf, const WCHAR *src_file, SP_FILE_COPY_PARA
  *
  * Retrieve the destination dir for a given section.
  */
-WCHAR *get_destination_dir( HINF hinf, const WCHAR *section )
+static WCHAR *get_destination_dir( HINF hinf, const WCHAR *section )
 {
     static const WCHAR Dest[] = {'D','e','s','t','i','n','a','t','i','o','n','D','i','r','s',0};
     static const WCHAR Def[]  = {'D','e','f','a','u','l','t','D','e','s','t','D','i','r',0};
@@ -1051,9 +1051,6 @@ static BOOL do_file_copyW( LPCWSTR source, LPCWSTR target, DWORD style,
             VersionSizeTarget = GetFileVersionInfoSizeW(target,&zero);
         }
 
-        TRACE("SizeTarget %i ... SizeSource %i\n",VersionSizeTarget,
-                VersionSizeSource);
-
         if (VersionSizeSource && VersionSizeTarget)
         {
             LPVOID VersionSource;
@@ -1135,7 +1132,7 @@ static BOOL do_file_copyW( LPCWSTR source, LPCWSTR target, DWORD style,
         }
     }
     if (style & (SP_COPY_NODECOMP | SP_COPY_LANGUAGEAWARE | SP_COPY_FORCE_IN_USE |
-                 SP_COPY_NOSKIP | SP_COPY_WARNIFSKIP))
+                 SP_COPY_IN_USE_NEEDS_REBOOT | SP_COPY_NOSKIP | SP_COPY_WARNIFSKIP))
     {
         ERR("Unsupported style(s) 0x%x\n",style);
     }
@@ -1143,25 +1140,7 @@ static BOOL do_file_copyW( LPCWSTR source, LPCWSTR target, DWORD style,
     if (docopy)
     {
         rc = CopyFileW(source,target,FALSE);
-        TRACE("Did copy... rc was %i\n",rc);
-
-        if (!rc && GetLastError() == ERROR_SHARING_VIOLATION &&
-            (style & SP_COPY_IN_USE_NEEDS_REBOOT))
-        {
-            static const WCHAR prefixW[] = {'S','E','T',0};
-            WCHAR temp_file[MAX_PATH];
-            WCHAR temp[MAX_PATH];
-
-            if (GetTempPathW(MAX_PATH, temp) &&
-                GetTempFileNameW(temp, prefixW, 0, temp_file))
-            {
-                rc = CopyFileW(source, temp_file, FALSE);
-                if (rc)
-                    rc = MoveFileExW(temp_file, target, MOVEFILE_DELAY_UNTIL_REBOOT);
-                else
-                    DeleteFileW(temp_file);
-            }
-        }
+        if (!rc) WARN( "failed to copy, err %u\n", GetLastError() );
     }
     else
         SetLastError(ERROR_SUCCESS);
@@ -1486,6 +1465,24 @@ BOOL WINAPI SetupCommitFileQueueW( HWND owner, HSPFILEQ handle, PSP_FILE_CALLBAC
                         handler( context, SPFILENOTIFY_ENDCOPY, (UINT_PTR)&paths, 0 );
                         break;
                     }
+                    paths.Win32Error = GetLastError();
+                    if (paths.Win32Error == ERROR_PATH_NOT_FOUND ||
+                        paths.Win32Error == ERROR_FILE_NOT_FOUND)
+                        continue;
+
+                    newpath[0] = 0;
+                    op_result = handler( context, SPFILENOTIFY_COPYERROR, (UINT_PTR)&paths, (UINT_PTR)newpath );
+                    if (op_result == FILEOP_ABORT)
+                        goto done;
+                    else if (op_result == FILEOP_SKIP)
+                        break;
+                    else if (op_result == FILEOP_NEWPATH)
+                    {
+                        lstrcpyW(op->media->root, newpath);
+                        build_filepathsW(op, &paths);
+                    }
+                    else if (op_result != FILEOP_DOIT)
+                        FIXME("Unhandled return value %#x.\n", op_result);
                 }
             }
             else

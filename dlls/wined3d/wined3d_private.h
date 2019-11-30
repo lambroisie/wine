@@ -3311,9 +3311,6 @@ struct wined3d_device
     enum wined3d_feature_level feature_level;
 
     struct wined3d_state state;
-    struct wined3d_stateblock *recording;
-    struct wined3d_stateblock_state stateblock_state;
-    struct wined3d_stateblock_state *update_stateblock_state;
 
     /* Internal use fields  */
     struct wined3d_device_creation_parameters create_parms;
@@ -4004,8 +4001,6 @@ struct wined3d_stateblock
     struct StageState         contained_sampler_states[WINED3D_MAX_COMBINED_SAMPLERS * WINED3D_HIGHEST_SAMPLER_STATE];
     unsigned int              num_contained_sampler_states;
 };
-
-void stateblock_init_contained_states(struct wined3d_stateblock *stateblock) DECLSPEC_HIDDEN;
 
 void wined3d_stateblock_state_init(struct wined3d_stateblock_state *state,
         const struct wined3d_device *device, DWORD flags) DECLSPEC_HIDDEN;
@@ -5363,6 +5358,14 @@ static inline BOOL wined3d_resource_check_fbo_attached(const struct wined3d_stat
             return TRUE;
 
     return FALSE;
+}
+
+static inline void wined3d_viewport_get_z_range(const struct wined3d_viewport *vp, float *min_z, float *max_z)
+{
+    *min_z = vp->min_z;
+
+    /* The magic constant is derived from tests. */
+    *max_z = max(vp->max_z, vp->min_z + 0.001f);
 }
 
 /* The WNDCLASS-Name for the fake window which we use to retrieve the GL capabilities */

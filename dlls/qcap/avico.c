@@ -37,7 +37,7 @@ typedef struct {
     struct strmbase_filter filter;
     IPersistPropertyBag IPersistPropertyBag_iface;
 
-    BaseInputPin sink;
+    struct strmbase_sink sink;
     struct strmbase_source source;
 
     DWORD fcc_handler;
@@ -178,14 +178,14 @@ static const IBaseFilterVtbl AVICompressorVtbl = {
     BaseFilterImpl_QueryVendorInfo,
 };
 
-static IPin *avi_compressor_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *avi_compressor_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     AVICompressor *filter = impl_from_strmbase_filter(iface);
 
     if (index == 0)
-        return &filter->sink.pin.IPin_iface;
+        return &filter->sink.pin;
     else if (index == 1)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     return NULL;
 }
 
@@ -412,9 +412,10 @@ static HRESULT sink_query_interface(struct strmbase_pin *iface, REFIID iid, void
     return S_OK;
 }
 
-static HRESULT WINAPI AVICompressorIn_Receive(BaseInputPin *base, IMediaSample *pSample)
+static HRESULT WINAPI AVICompressorIn_Receive(struct strmbase_sink *base, IMediaSample *pSample)
 {
     AVICompressor *This = impl_from_strmbase_pin(&base->pin);
+    IMemInputPin *meminput = This->source.pMemInputPin;
     VIDEOINFOHEADER *src_videoinfo;
     REFERENCE_TIME start, stop;
     IMediaSample *out_sample;
@@ -428,6 +429,12 @@ static HRESULT WINAPI AVICompressorIn_Receive(BaseInputPin *base, IMediaSample *
     HRESULT hres;
 
     TRACE("(%p)->(%p)\n", base, pSample);
+
+    if (!meminput)
+    {
+        WARN("Source is not connected, returning VFW_E_NOT_CONNECTED.\n");
+        return VFW_E_NOT_CONNECTED;
+    }
 
     if(!This->hic) {
         FIXME("Driver not loaded\n");
@@ -470,7 +477,7 @@ static HRESULT WINAPI AVICompressorIn_Receive(BaseInputPin *base, IMediaSample *
     if((This->driver_flags & VIDCF_TEMPORAL) && !(This->driver_flags & VIDCF_FASTTEMPORALC))
         FIXME("Unsupported temporal compression\n");
 
-    src_videoinfo = (VIDEOINFOHEADER *)This->sink.pin.mtCurrent.pbFormat;
+    src_videoinfo = (VIDEOINFOHEADER *)This->sink.pin.mt.pbFormat;
     This->videoinfo->bmiHeader.biSizeImage = This->max_frame_size;
     res = ICCompress(This->hic, sync_point ? ICCOMPRESS_KEYFRAME : 0, &This->videoinfo->bmiHeader, buf,
             &src_videoinfo->bmiHeader, ptr, 0, &comp_flags, This->frame_cnt, 0, 0, NULL, NULL);
@@ -490,7 +497,7 @@ static HRESULT WINAPI AVICompressorIn_Receive(BaseInputPin *base, IMediaSample *
     else
         IMediaSample_SetMediaTime(out_sample, NULL, NULL);
 
-    hres = BaseOutputPinImpl_Deliver(&This->source, out_sample);
+    hres = IMemInputPin_Receive(meminput, out_sample);
     if(FAILED(hres))
         WARN("Deliver failed: %08x\n", hres);
 
@@ -499,7 +506,7 @@ static HRESULT WINAPI AVICompressorIn_Receive(BaseInputPin *base, IMediaSample *
     return hres;
 }
 
-static const BaseInputPinFuncTable AVICompressorBaseInputPinVtbl =
+static const struct strmbase_sink_ops sink_ops =
 {
     .base.pin_query_accept = sink_query_accept,
     .base.pin_get_media_type = strmbase_pin_get_media_type,
@@ -539,7 +546,7 @@ static HRESULT source_get_media_type(struct strmbase_pin *base, unsigned int iPo
     amt->subtype = MEDIASUBTYPE_PCM;
     amt->bFixedSizeSamples = FALSE;
     amt->bTemporalCompression = (This->driver_flags & VIDCF_TEMPORAL) != 0;
-    amt->lSampleSize = This->sink.pin.mtCurrent.lSampleSize;
+    amt->lSampleSize = This->sink.pin.mt.lSampleSize;
     amt->formattype = FORMAT_VideoInfo;
     amt->pUnk = NULL;
     amt->cbFormat = This->videoinfo_size;
@@ -597,7 +604,7 @@ IUnknown* WINAPI QCAP_createAVICompressor(IUnknown *outer, HRESULT *phr)
     compressor->IPersistPropertyBag_iface.lpVtbl = &PersistPropertyBagVtbl;
 
     strmbase_sink_init(&compressor->sink, &AVICompressorInputPinVtbl,
-            &compressor->filter, sink_name, &AVICompressorBaseInputPinVtbl, NULL);
+            &compressor->filter, sink_name, &sink_ops, NULL);
     strmbase_source_init(&compressor->source, &AVICompressorOutputPinVtbl,
             &compressor->filter, source_name, &source_ops);
 

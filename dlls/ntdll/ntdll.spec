@@ -220,6 +220,7 @@
 @ stdcall -norelay NtGetContextThread(long ptr)
 @ stdcall NtGetCurrentProcessorNumber()
 # @ stub NtGetDevicePowerState
+@ stdcall NtGetNlsSectionPtr(long long long ptr ptr)
 @ stub NtGetPlugPlayEvent
 @ stdcall NtGetTickCount()
 @ stdcall NtGetWriteWatch(long long ptr long ptr ptr ptr)
@@ -728,9 +729,9 @@
 @ stdcall RtlImpersonateSelf(long)
 @ stdcall RtlInitAnsiString(ptr str)
 @ stdcall RtlInitAnsiStringEx(ptr str)
-@ stub RtlInitCodePageTable
+@ stdcall RtlInitCodePageTable(ptr ptr)
 # @ stub RtlInitMemoryStream
-@ stub RtlInitNlsTables
+@ stdcall RtlInitNlsTables(ptr ptr ptr ptr)
 # @ stub RtlInitOutOfProcessMemoryStream
 @ stdcall RtlInitString(ptr str)
 @ stdcall RtlInitUnicodeString(ptr wstr)
@@ -788,6 +789,7 @@
 @ stub RtlIsGenericTableEmpty
 # @ stub RtlIsGenericTableEmptyAvl
 @ stdcall RtlIsNameLegalDOS8Dot3(ptr ptr ptr)
+@ stdcall RtlIsNormalizedString(long wstr long ptr)
 @ stdcall RtlIsProcessorFeaturePresent(long)
 # @ stub RtlIsRangeAvailable
 @ stdcall RtlIsTextUnicode(ptr long ptr)
@@ -807,6 +809,7 @@
 @ stdcall RtlLengthSecurityDescriptor(ptr)
 @ stdcall RtlLengthSid(ptr)
 @ stdcall RtlLocalTimeToSystemTime(ptr ptr)
+@ stdcall RtlLocaleNameToLcid(wstr ptr long)
 # @ stub RtlLockBootStatusData
 @ stdcall RtlLockHeap(long)
 # @ stub RtlLockMemoryStreamRegion
@@ -829,6 +832,7 @@
 # @ stub RtlNewSecurityObjectEx
 # @ stub RtlNewSecurityObjectWithMultipleInheritance
 @ stdcall RtlNormalizeProcessParams(ptr)
+@ stdcall RtlNormalizeString(long wstr long ptr ptr)
 # @ stub RtlNtPathNameToDosPathName
 @ stdcall RtlNtStatusToDosError(long)
 @ stdcall RtlNtStatusToDosErrorNoTeb(long)
@@ -897,7 +901,7 @@
 @ stub RtlRemoteCall
 @ stdcall RtlRemoveVectoredContinueHandler(ptr)
 @ stdcall RtlRemoveVectoredExceptionHandler(ptr)
-@ stub RtlResetRtlTranslations
+@ stdcall RtlResetRtlTranslations(ptr)
 @ stdcall -arch=x86_64 RtlRestoreContext(ptr ptr)
 @ stdcall RtlRestoreLastWin32Error(long) RtlSetLastWin32Error
 @ stub RtlRevertMemoryStream
@@ -1180,6 +1184,7 @@
 @ stdcall -private -norelay ZwGetContextThread(long ptr) NtGetContextThread
 @ stdcall -private ZwGetCurrentProcessorNumber() NtGetCurrentProcessorNumber
 # @ stub ZwGetDevicePowerState
+@ stdcall -private ZwGetNlsSectionPtr(long long long ptr ptr) NtGetNlsSectionPtr
 @ stub ZwGetPlugPlayEvent
 @ stdcall -private ZwGetTickCount() NtGetTickCount
 @ stdcall -private ZwGetWriteWatch(long long ptr long ptr ptr ptr) NtGetWriteWatch

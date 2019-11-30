@@ -54,6 +54,8 @@ typedef struct VideoRendererImpl
     LONG FullScreenMode;
 
     DWORD saved_style;
+
+    HANDLE run_event;
 } VideoRendererImpl;
 
 static inline VideoRendererImpl *impl_from_BaseWindow(BaseWindow *iface)
@@ -134,48 +136,6 @@ static void VideoRenderer_AutoShowWindow(VideoRendererImpl *This)
         ShowWindow(This->baseControlWindow.baseWindow.hWnd, SW_SHOW);
 }
 
-static DWORD VideoRenderer_SendSampleData(VideoRendererImpl* This, LPBYTE data, DWORD size)
-{
-    AM_MEDIA_TYPE amt;
-    HRESULT hr = S_OK;
-    BITMAPINFOHEADER *bmiHeader;
-    HDC dc;
-
-    TRACE("(%p)->(%p, %d)\n", This, data, size);
-
-    hr = IPin_ConnectionMediaType(&This->renderer.sink.pin.IPin_iface, &amt);
-    if (FAILED(hr)) {
-        ERR("Unable to retrieve media type\n");
-        return hr;
-    }
-
-    if (IsEqualIID(&amt.formattype, &FORMAT_VideoInfo))
-    {
-        bmiHeader = &((VIDEOINFOHEADER *)amt.pbFormat)->bmiHeader;
-    }
-    else if (IsEqualIID(&amt.formattype, &FORMAT_VideoInfo2))
-    {
-        bmiHeader = &((VIDEOINFOHEADER2 *)amt.pbFormat)->bmiHeader;
-    }
-    else
-    {
-        FIXME("Unknown type %s\n", debugstr_guid(&amt.subtype));
-        return VFW_E_RUNTIME_ERROR;
-    }
-
-    TRACE("Src Rect: %s\n", wine_dbgstr_rect(&This->SourceRect));
-    TRACE("Dst Rect: %s\n", wine_dbgstr_rect(&This->DestRect));
-
-    dc = GetDC(This->baseControlWindow.baseWindow.hWnd);
-    StretchDIBits(dc, This->DestRect.left, This->DestRect.top, This->DestRect.right -This->DestRect.left,
-                  This->DestRect.bottom - This->DestRect.top, This->SourceRect.left, This->SourceRect.top,
-                  This->SourceRect.right - This->SourceRect.left, This->SourceRect.bottom - This->SourceRect.top,
-                  data, (BITMAPINFO *)bmiHeader, DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(This->baseControlWindow.baseWindow.hWnd, dc);
-
-    return S_OK;
-}
-
 static HRESULT WINAPI VideoRenderer_ShouldDrawSampleNow(struct strmbase_renderer *filter,
         IMediaSample *pSample, REFERENCE_TIME *start, REFERENCE_TIME *end)
 {
@@ -187,12 +147,14 @@ static HRESULT WINAPI VideoRenderer_ShouldDrawSampleNow(struct strmbase_renderer
 
 static HRESULT WINAPI VideoRenderer_DoRenderSample(struct strmbase_renderer *iface, IMediaSample *pSample)
 {
-    VideoRendererImpl *This = impl_from_strmbase_renderer(iface);
+    VideoRendererImpl *filter = impl_from_strmbase_renderer(iface);
+    const AM_MEDIA_TYPE *mt = &filter->renderer.sink.pin.mt;
     LPBYTE pbSrcStream = NULL;
-    LONG cbSrcStream = 0;
+    BITMAPINFOHEADER *bih;
     HRESULT hr;
+    HDC dc;
 
-    TRACE("(%p)->(%p)\n", This, pSample);
+    TRACE("filter %p, sample %p.\n", filter, pSample);
 
     hr = IMediaSample_GetPointer(pSample, &pbSrcStream);
     if (FAILED(hr))
@@ -201,38 +163,30 @@ static HRESULT WINAPI VideoRenderer_DoRenderSample(struct strmbase_renderer *ifa
         return hr;
     }
 
-    cbSrcStream = IMediaSample_GetActualDataLength(pSample);
+    if (IsEqualGUID(&mt->formattype, &FORMAT_VideoInfo))
+        bih = &((VIDEOINFOHEADER *)mt->pbFormat)->bmiHeader;
+    else
+        bih = &((VIDEOINFOHEADER2 *)mt->pbFormat)->bmiHeader;
 
-    TRACE("val %p %d\n", pbSrcStream, cbSrcStream);
+    dc = GetDC(filter->baseControlWindow.baseWindow.hWnd);
+    StretchDIBits(dc, filter->DestRect.left, filter->DestRect.top,
+            filter->DestRect.right - filter->DestRect.left,
+            filter->DestRect.bottom - filter->DestRect.top,
+            filter->SourceRect.left, filter->SourceRect.top,
+            filter->SourceRect.right - filter->SourceRect.left,
+            filter->SourceRect.bottom - filter->SourceRect.top,
+            pbSrcStream, (BITMAPINFO *)bih, DIB_RGB_COLORS, SRCCOPY);
+    ReleaseDC(filter->baseControlWindow.baseWindow.hWnd, dc);
 
-#if 0 /* For debugging purpose */
+    if (filter->renderer.filter.state == State_Paused)
     {
-        int i;
-        for(i = 0; i < cbSrcStream; i++)
-        {
-            if ((i!=0) && !(i%16))
-                TRACE("\n");
-                TRACE("%02x ", pbSrcStream[i]);
-        }
-        TRACE("\n");
-    }
-#endif
+        const HANDLE events[2] = {filter->run_event, filter->renderer.flush_event};
 
-    if (This->renderer.filter.state == State_Paused)
-    {
-        VideoRenderer_SendSampleData(This, pbSrcStream, cbSrcStream);
-        if (This->renderer.filter.state == State_Paused)
-        {
-            /* Flushing */
-            return S_OK;
-        }
-        if (This->renderer.filter.state == State_Stopped)
-        {
-            return VFW_E_WRONG_STATE;
-        }
-    } else {
-        VideoRenderer_SendSampleData(This, pbSrcStream, cbSrcStream);
+        LeaveCriticalSection(&filter->renderer.csRenderLock);
+        WaitForMultipleObjects(2, events, FALSE, INFINITE);
+        EnterCriticalSection(&filter->renderer.csRenderLock);
     }
+
     return S_OK;
 }
 
@@ -291,7 +245,7 @@ static void video_renderer_destroy(struct strmbase_renderer *iface)
 
     BaseControlWindow_Destroy(&filter->baseControlWindow);
     BaseControlVideo_Destroy(&filter->baseControlVideo);
-
+    CloseHandle(filter->run_event);
     strmbase_renderer_cleanup(&filter->renderer);
     CoTaskMemFree(filter);
 }
@@ -324,6 +278,13 @@ static HRESULT video_renderer_pin_query_interface(struct strmbase_renderer *ifac
     return S_OK;
 }
 
+static void video_renderer_start_stream(struct strmbase_renderer *iface)
+{
+    VideoRendererImpl *filter = impl_from_strmbase_renderer(iface);
+
+    SetEvent(filter->run_event);
+}
+
 static void video_renderer_stop_stream(struct strmbase_renderer *iface)
 {
     VideoRendererImpl *This = impl_from_strmbase_renderer(iface);
@@ -333,6 +294,8 @@ static void video_renderer_stop_stream(struct strmbase_renderer *iface)
     if (This->baseControlWindow.AutoShow)
         /* Black it out */
         RedrawWindow(This->baseControlWindow.baseWindow.hWnd, NULL, NULL, RDW_INVALIDATE|RDW_ERASE);
+
+    ResetEvent(This->run_event);
 }
 
 static void video_renderer_init_stream(struct strmbase_renderer *iface)
@@ -372,6 +335,7 @@ static const struct strmbase_renderer_ops renderer_ops =
     .pfnCheckMediaType = VideoRenderer_CheckMediaType,
     .pfnDoRenderSample = VideoRenderer_DoRenderSample,
     .renderer_init_stream = video_renderer_init_stream,
+    .renderer_start_stream = video_renderer_start_stream,
     .renderer_stop_stream = video_renderer_stop_stream,
     .pfnShouldDrawSampleNow = VideoRenderer_ShouldDrawSampleNow,
     .renderer_destroy = video_renderer_destroy,
@@ -394,7 +358,7 @@ static HRESULT WINAPI VideoRenderer_GetSourceRect(BaseControlVideo* iface, RECT 
 static HRESULT WINAPI VideoRenderer_GetStaticImage(BaseControlVideo* iface, LONG *pBufferSize, LONG *pDIBImage)
 {
     VideoRendererImpl *This = impl_from_BaseControlVideo(iface);
-    AM_MEDIA_TYPE *amt = &This->renderer.sink.pin.mtCurrent;
+    AM_MEDIA_TYPE *amt = &This->renderer.sink.pin.mt;
     BITMAPINFOHEADER *bmiHeader;
     LONG needed_size;
     char *ptr;
@@ -464,7 +428,7 @@ static VIDEOINFOHEADER* WINAPI VideoRenderer_GetVideoFormat(BaseControlVideo* if
 
     TRACE("(%p/%p)\n", This, iface);
 
-    pmt = &This->renderer.sink.pin.mtCurrent;
+    pmt = &This->renderer.sink.pin.mt;
     if (IsEqualIID(&pmt->formattype, &FORMAT_VideoInfo)) {
         return (VIDEOINFOHEADER*)pmt->pbFormat;
     } else if (IsEqualIID(&pmt->formattype, &FORMAT_VideoInfo2)) {
@@ -771,14 +735,15 @@ HRESULT VideoRenderer_create(IUnknown *outer, void **out)
     if (FAILED(hr))
         goto fail;
 
-    hr = strmbase_video_init(&pVideoRenderer->baseControlVideo,
-            &pVideoRenderer->renderer.filter, &pVideoRenderer->renderer.filter.csFilter,
+    hr = strmbase_video_init(&pVideoRenderer->baseControlVideo, &pVideoRenderer->renderer.filter,
             &pVideoRenderer->renderer.sink.pin, &renderer_BaseControlVideoFuncTable);
     if (FAILED(hr))
         goto fail;
 
     if (FAILED(hr = BaseWindowImpl_PrepareWindow(&pVideoRenderer->baseControlWindow.baseWindow)))
         goto fail;
+
+    pVideoRenderer->run_event = CreateEventW(NULL, TRUE, FALSE, NULL);
 
     *out = &pVideoRenderer->renderer.filter.IUnknown_inner;
     return S_OK;

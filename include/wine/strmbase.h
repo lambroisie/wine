@@ -37,9 +37,7 @@ struct strmbase_pin
     PIN_DIRECTION dir;
     WCHAR name[128];
     IPin *peer;
-    AM_MEDIA_TYPE mtCurrent;
-    REFERENCE_TIME tStart, tStop;
-    double dRate;
+    AM_MEDIA_TYPE mt;
 
     const struct BasePinFuncTable* pFuncsTable;
 };
@@ -77,25 +75,26 @@ struct strmbase_source_ops
 	BaseOutputPin_DecideAllocator pfnDecideAllocator;
 };
 
-typedef struct BaseInputPin
+struct strmbase_sink
 {
     struct strmbase_pin pin;
 
     IMemInputPin IMemInputPin_iface;
     IMemAllocator *pAllocator;
-    BOOL flushing, end_of_stream;
+    BOOL flushing;
     IMemAllocator *preferred_allocator;
 
-    const struct BaseInputPinFuncTable *pFuncsTable;
-} BaseInputPin;
+    const struct strmbase_sink_ops *pFuncsTable;
+};
 
-typedef HRESULT (WINAPI *BaseInputPin_Receive)(BaseInputPin *This, IMediaSample *pSample);
+typedef HRESULT (WINAPI *BaseInputPin_Receive)(struct strmbase_sink *This, IMediaSample *pSample);
 
-typedef struct BaseInputPinFuncTable {
+struct strmbase_sink_ops
+{
 	BasePinFuncTable base;
 	/* Optional */
 	BaseInputPin_Receive pfnReceive;
-} BaseInputPinFuncTable;
+};
 
 /* Base Pin */
 HRESULT strmbase_pin_get_media_type(struct strmbase_pin *pin, unsigned int index, AM_MEDIA_TYPE *mt);
@@ -124,7 +123,6 @@ HRESULT WINAPI BaseOutputPinImpl_EndFlush(IPin * iface);
 
 HRESULT WINAPI BaseOutputPinImpl_GetDeliveryBuffer(struct strmbase_source *pin,
         IMediaSample **sample, REFERENCE_TIME *start, REFERENCE_TIME *stop, DWORD flags);
-HRESULT WINAPI BaseOutputPinImpl_Deliver(struct strmbase_source *pin, IMediaSample *sample);
 HRESULT WINAPI BaseOutputPinImpl_Active(struct strmbase_source *pin);
 HRESULT WINAPI BaseOutputPinImpl_Inactive(struct strmbase_source *pin);
 HRESULT WINAPI BaseOutputPinImpl_InitAllocator(struct strmbase_source *pin, IMemAllocator **allocator);
@@ -144,9 +142,9 @@ HRESULT WINAPI BaseInputPinImpl_BeginFlush(IPin * iface);
 HRESULT WINAPI BaseInputPinImpl_EndFlush(IPin * iface);
 HRESULT WINAPI BaseInputPinImpl_NewSegment(IPin * iface, REFERENCE_TIME tStart, REFERENCE_TIME tStop, double dRate);
 
-void strmbase_sink_init(BaseInputPin *pin, const IPinVtbl *vtbl, struct strmbase_filter *filter,
-        const WCHAR *name, const BaseInputPinFuncTable *func_table, IMemAllocator *allocator);
-void strmbase_sink_cleanup(BaseInputPin *pin);
+void strmbase_sink_init(struct strmbase_sink *pin, const IPinVtbl *vtbl, struct strmbase_filter *filter,
+        const WCHAR *name, const struct strmbase_sink_ops *ops, IMemAllocator *allocator);
+void strmbase_sink_cleanup(struct strmbase_sink *pin);
 
 struct strmbase_filter
 {
@@ -167,7 +165,7 @@ struct strmbase_filter
 
 struct strmbase_filter_ops
 {
-    IPin *(*filter_get_pin)(struct strmbase_filter *iface, unsigned int index);
+    struct strmbase_pin *(*filter_get_pin)(struct strmbase_filter *iface, unsigned int index);
     void (*filter_destroy)(struct strmbase_filter *iface);
     HRESULT (*filter_query_interface)(struct strmbase_filter *iface, REFIID iid, void **out);
 
@@ -209,7 +207,7 @@ typedef struct TransformFilter
     IQualityControl source_IQualityControl_iface;
     IQualityControl *source_qc_sink;
 
-    BaseInputPin sink;
+    struct strmbase_sink sink;
 
     AM_MEDIA_TYPE pmt;
     CRITICAL_SECTION csReceive;
@@ -477,7 +475,6 @@ typedef struct tagBaseControlVideo
 	IBasicVideo IBasicVideo_iface;
 
 	struct strmbase_filter *pFilter;
-	CRITICAL_SECTION* pInterfaceLock;
 	struct strmbase_pin *pPin;
 
 	const struct BaseControlVideoFuncTable* pFuncsTable;
@@ -509,7 +506,7 @@ typedef struct BaseControlVideoFuncTable {
 } BaseControlVideoFuncTable;
 
 HRESULT WINAPI strmbase_video_init(BaseControlVideo *video, struct strmbase_filter *filter,
-        CRITICAL_SECTION *cs, struct strmbase_pin *pin, const BaseControlVideoFuncTable *func_table);
+        struct strmbase_pin *pin, const BaseControlVideoFuncTable *func_table);
 HRESULT WINAPI BaseControlVideo_Destroy(BaseControlVideo *pControlVideo);
 #endif
 #endif
@@ -518,7 +515,7 @@ struct strmbase_renderer
 {
     struct strmbase_filter filter;
 
-    BaseInputPin sink;
+    struct strmbase_sink sink;
     IUnknown *pPosition;
     CRITICAL_SECTION csRenderLock;
     /* Signaled when the filter has completed a state change. The filter waits
@@ -537,6 +534,8 @@ struct strmbase_renderer
     struct QualityControlImpl *qcimpl;
 
     const struct strmbase_renderer_ops *pFuncsTable;
+
+    BOOL eos;
 };
 
 typedef HRESULT (WINAPI *BaseRenderer_CheckMediaType)(struct strmbase_renderer *iface, const AM_MEDIA_TYPE *mt);
@@ -568,10 +567,7 @@ struct strmbase_renderer_ops
     HRESULT (*renderer_pin_query_interface)(struct strmbase_renderer *iface, REFIID iid, void **out);
 };
 
-HRESULT WINAPI BaseRendererImpl_BeginFlush(struct strmbase_renderer *filter);
 HRESULT WINAPI BaseRendererImpl_ClearPendingSample(struct strmbase_renderer *filter);
-HRESULT WINAPI BaseRendererImpl_EndOfStream(struct strmbase_renderer *filter);
-HRESULT WINAPI BaseRendererImpl_EndFlush(struct strmbase_renderer *filter);
 HRESULT WINAPI BaseRendererImpl_Receive(struct strmbase_renderer *filter, IMediaSample *sample);
 
 HRESULT WINAPI strmbase_renderer_init(struct strmbase_renderer *filter, IUnknown *outer,

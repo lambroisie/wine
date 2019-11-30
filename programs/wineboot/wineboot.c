@@ -61,6 +61,7 @@
 #include <unistd.h>
 #include <windows.h>
 #include <winternl.h>
+#include <sddl.h>
 #include <wine/svcctl.h>
 #include <wine/asm.h>
 #include <wine/debug.h>
@@ -70,8 +71,6 @@
 #include <shlwapi.h>
 #include <shellapi.h>
 #include <setupapi.h>
-#include <ntsecapi.h>
-#include <wininet.h>
 #include <newdev.h>
 #include "resource.h"
 
@@ -161,21 +160,21 @@ done:
 }
 
 /* print the config directory in a more Unix-ish way */
-static const char *prettyprint_configdir(void)
+static const WCHAR *prettyprint_configdir(void)
 {
-    static char buffer[MAX_PATH];
-    WCHAR *path = _wgetenv( wineconfigdirW );
-    char *p;
+    static WCHAR buffer[MAX_PATH];
+    WCHAR *p, *path = _wgetenv( wineconfigdirW );
 
-    if (!WideCharToMultiByte( CP_UNIXCP, 0, path, -1, buffer, ARRAY_SIZE(buffer), NULL, NULL ))
-        strcpy( buffer + ARRAY_SIZE(buffer) - 4, "..." );
+    lstrcpynW( buffer, path, ARRAY_SIZE(buffer) );
+    if (lstrlenW( wineconfigdirW ) >= ARRAY_SIZE(buffer) )
+        lstrcpyW( buffer + ARRAY_SIZE(buffer) - 4, L"..." );
 
-    if (!strncmp( buffer, "\\??\\unix\\", 9 ))
+    if (!wcsncmp( buffer, L"\\??\\unix\\", 9 ))
     {
         for (p = buffer + 9; *p; p++) if (*p == '\\') *p = '/';
         return buffer + 9;
     }
-    else if (!strncmp( buffer, "\\??\\Z:\\", 7 ))
+    else if (!wcsncmp( buffer, L"\\??\\Z:\\", 7 ))
     {
         for (p = buffer + 6; *p; p++) if (*p == '\\') *p = '/';
         return buffer + 6;
@@ -300,36 +299,6 @@ static void get_namestring( WCHAR *buf ) { }
 
 #endif  /* __i386__ || __x86_64__ */
 
-/* set a serial number for the disk containing windows */
-static void create_disk_serial_number(void)
-{
-    static const  WCHAR filename[] = {'\\','.','w','i','n','d','o','w','s','-','s','e','r','i','a','l',0};
-    DWORD serial, written;
-    WCHAR path[MAX_PATH];
-    char buffer[16];
-    HANDLE file;
-
-    if (GetSystemDirectoryW( path, sizeof(path)/sizeof(path[0]) ) && path[1] == ':')
-    {
-        path[2] = 0;
-        lstrcatW( path, filename );
-        if (!PathFileExistsW( path ) && RtlGenRandom( &serial, sizeof(serial) ))
-        {
-            WINE_TRACE( "Putting serial number of %08X into file %s\n", serial, wine_dbgstr_w(path) );
-            file = CreateFileW( path, GENERIC_WRITE, FILE_SHARE_READ, NULL,
-                                CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL );
-            if (file == INVALID_HANDLE_VALUE)
-                WINE_ERR( "wine: failed to create %s.\n", wine_dbgstr_w(path) );
-            else
-            {
-                sprintf( buffer, "%X\n", serial );
-                WriteFile( file, buffer, strlen(buffer), &written, NULL );
-                CloseHandle( file );
-            }
-        }
-    }
-}
-
 /* create the volatile hardware registry keys */
 static void create_hardware_registry_keys(void)
 {
@@ -446,100 +415,6 @@ static void create_hardware_registry_keys(void)
     HeapFree( GetProcessHeap(), 0, power_info );
 }
 
-struct dyndata_enum_key{
-    WCHAR id[9];
-    WCHAR hardwarekey[64];
-    char  problem[4];
-    char  status[4];
-    char  allocation[12];
-    char  child[4];
-    char  sibling[4];
-    char  parent[4];
-};
-
-static struct dyndata_enum_key predefined_enums[] =
-{
-    {
-        {'C','2','9','A','2','3','D','0',0},
-        {'H','T','R','E','E','\\','R','O','O','T','\\','0',0},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x4e, 0x08, 0x08, 0x1a},
-        {0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0x40, 0x5a, 0x9a, 0xc2},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x00, 0x00, 0x00, 0x00}
-    },
-    {
-        {'C','2','9','A','5','A','4','0',0},
-        {'H','T','R','E','E','\\','R','E','S','E','R','V','E','D','\\','0',0},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x4e, 0x08, 0x08, 0x18},
-        {0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x60, 0x5c, 0x9a, 0xc2},
-        {0xd0, 0x23, 0x9a, 0xc2}
-    },
-    {
-        {'C','2','9','A','5','C','6','0',0},
-        {'R','O','O','T','\\','N','E','T','\\','0','0','0','0',0},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x4f, 0x6a, 0x08, 0x18},
-        {0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0xf0, 0x93, 0x9b, 0xc2},
-        {0xc0, 0x5d, 0x9a, 0xc2},
-        {0xd0, 0x23, 0x9a, 0xc2}
-    },
-    {
-        {'C','2','9','A','5','D','C','0',0},
-        {'R','O','O','T','\\','P','R','O','C','E','S','S','O','R','_','U','P','D','A','T','E','\\','0','0','0','0',0},
-        {0x00, 0x00, 0x00, 0x00},
-        {0xcf, 0x6a, 0x88, 0x19},
-        {0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x20, 0x5f, 0x9a, 0xc2},
-        {0xd0, 0x23, 0x9a, 0xc2}
-    },
-    {
-        {'C','2','9','A','5','F','2','0',0},
-        {'R','O','O','T','\\','S','W','E','N','U','M','\\','0','0','0','0',0},
-        {0x00, 0x00, 0x00, 0x00},
-        {0xcf, 0x6a, 0x88, 0x19},
-        {0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-        {0x00, 0x00, 0x00, 0x00},
-        {0x20, 0x5f, 0x9a, 0xc2},
-        {0xd0, 0x23, 0x9a, 0xc2}
-    }
-};
-
-/* add entry to HKEY_DYN_DATA\Config Manager\Enum */
-static void add_dynamic_enum_keys(HKEY key, struct dyndata_enum_key *entry)
-{
-    static const WCHAR HardWareKeyW[] = {'H','a','r','d','W','a','r','e','K','e','y',0};
-    static const WCHAR ProblemW[]     = {'P','r','o','b','l','e','m',0};
-    static const WCHAR StatusW[]      = {'S','t','a','t','u','s',0};
-    static const WCHAR AllocationW[]  = {'A','l','l','o','c','a','t','i','o','n',0};
-    static const WCHAR ChildW[]       = {'C','h','i','l','d',0};
-    static const WCHAR SiblingW[]     = {'S','i','b','l','i','n','g',0};
-    static const WCHAR ParentW[]      = {'P','a','r','e','n','t',0};
-
-    HKEY subkey;
-
-    if (!entry)
-        return;
-
-    if (RegCreateKeyExW( key, entry->id, 0, NULL, 0, KEY_WRITE, NULL, &subkey, NULL ))
-        return;
-
-    set_reg_value( subkey, HardWareKeyW, entry->hardwarekey );
-    RegSetValueExW( subkey, ProblemW,    0, REG_BINARY, (const BYTE *)entry->problem,    sizeof(entry->problem) );
-    RegSetValueExW( subkey, StatusW,     0, REG_BINARY, (const BYTE *)entry->status,     sizeof(entry->status) );
-    RegSetValueExW( subkey, AllocationW, 0, REG_BINARY, (const BYTE *)entry->allocation, sizeof(entry->allocation) );
-    RegSetValueExW( subkey, ChildW,      0, REG_BINARY, (const BYTE *)entry->child,      sizeof(entry->child) );
-    RegSetValueExW( subkey, SiblingW,    0, REG_BINARY, (const BYTE *)entry->sibling,    sizeof(entry->sibling) );
-    RegSetValueExW( subkey, ParentW,     0, REG_BINARY, (const BYTE *)entry->parent,     sizeof(entry->parent) );
-
-    RegCloseKey( subkey );
-}
 
 /* create the DynData registry keys */
 static void create_dynamic_registry_keys(void)
@@ -549,18 +424,11 @@ static void create_dynamic_registry_keys(void)
     static const WCHAR ConfigManagerW[] = {'C','o','n','f','i','g',' ','M','a','n','a','g','e','r','\\',
                                            'E','n','u','m',0};
     HKEY key;
-    int entry;
 
     if (!RegCreateKeyExW( HKEY_DYN_DATA, StatDataW, 0, NULL, 0, KEY_WRITE, NULL, &key, NULL ))
         RegCloseKey( key );
-
     if (!RegCreateKeyExW( HKEY_DYN_DATA, ConfigManagerW, 0, NULL, 0, KEY_WRITE, NULL, &key, NULL ))
-    {
-        for (entry = 0; entry < sizeof(predefined_enums) / sizeof(predefined_enums[0]); entry++)
-            add_dynamic_enum_keys( key, &predefined_enums[entry] );
-
         RegCloseKey( key );
-    }
 }
 
 /* create the platform-specific environment registry keys */
@@ -700,48 +568,6 @@ static void create_volatile_environment_registry_key(void)
 
     set_reg_value( hkey, SessionNameW, ConsoleW );
     RegCloseKey( hkey );
-}
-
-static void create_proxy_settings(void)
-{
-    HINTERNET inet;
-    inet = InternetOpenA( "Wine", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 );
-    if (inet) InternetCloseHandle( inet );
-}
-
-static void create_etc_stub_files(void)
-{
-    static const WCHAR drivers_etcW[] = {'\\','d','r','i','v','e','r','s','\\','e','t','c',0};
-    static const WCHAR hostsW[]    = {'h','o','s','t','s',0};
-    static const WCHAR networksW[] = {'n','e','t','w','o','r','k','s',0};
-    static const WCHAR protocolW[] = {'p','r','o','t','o','c','o','l',0};
-    static const WCHAR servicesW[] = {'s','e','r','v','i','c','e','s',0};
-    static const WCHAR *files[] = { hostsW, networksW, protocolW, servicesW };
-    WCHAR path[MAX_PATH + sizeof(drivers_etcW)/sizeof(WCHAR) + 32];
-    DWORD i, path_len;
-    HANDLE file;
-
-    GetSystemDirectoryW( path, MAX_PATH );
-    lstrcatW( path, drivers_etcW );
-    path_len = lstrlenW( path );
-
-    if (!CreateDirectoryW( path, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS)
-        return;
-
-    path[ path_len++ ] = '\\';
-    for (i = 0; i < sizeof(files) / sizeof(files[0]); i++)
-    {
-        path[ path_len ] = 0;
-        lstrcatW( path, files[i] );
-        if (PathFileExistsW( path )) continue;
-
-        file = CreateFileW( path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                            NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL );
-        if (file == INVALID_HANDLE_VALUE)
-            WINE_ERR( "wine: failed to create %s.\n", wine_dbgstr_w(path) );
-        else
-            CloseHandle( file );
-    }
 }
 
 /* Performs the rename operations dictated in %SystemRoot%\Wininit.ini.
@@ -1238,18 +1064,9 @@ static INT_PTR CALLBACK wait_dlgproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp 
 
 static HWND show_wait_window(void)
 {
-    const char *config_dir = prettyprint_configdir();
-    WCHAR *name;
-    HWND hwnd;
-    DWORD len;
-
-    len = MultiByteToWideChar( CP_UNIXCP, 0, config_dir, -1, NULL, 0 );
-    name = HeapAlloc( GetProcessHeap(), 0, len * sizeof(WCHAR) );
-    MultiByteToWideChar( CP_UNIXCP, 0, config_dir, -1, name, len );
-    hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
-                               wait_dlgproc, (LPARAM)name );
+    HWND hwnd = CreateDialogParamW( GetModuleHandleW(0), MAKEINTRESOURCEW(IDD_WAITDLG), 0,
+                                    wait_dlgproc, (LPARAM)prettyprint_configdir() );
     ShowWindow( hwnd, SW_SHOWNORMAL );
-    HeapFree( GetProcessHeap(), 0, name );
     return hwnd;
 }
 
@@ -1349,6 +1166,48 @@ static void install_root_pnp_devices(void)
     SetupDiDestroyDeviceInfoList(set);
 }
 
+static void update_user_profile(void)
+{
+    static const WCHAR profile_list[] = {'S','o','f','t','w','a','r','e','\\',
+                                         'M','i','c','r','o','s','o','f','t','\\',
+                                         'W','i','n','d','o','w','s',' ','N','T','\\',
+                                         'C','u','r','r','e','n','t','V','e','r','s','i','o','n','\\',
+                                         'P','r','o','f','i','l','e','L','i','s','t',0};
+    static const WCHAR profile_image_path[] = {'P','r','o','f','i','l','e','I','m','a','g','e','P','a','t','h',0};
+    char token_buf[sizeof(TOKEN_USER) + sizeof(SID) + sizeof(DWORD) * SID_MAX_SUB_AUTHORITIES];
+    HANDLE token;
+    WCHAR profile[MAX_PATH], *sid;
+    DWORD size;
+    HKEY hkey, profile_hkey;
+
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_READ, &token))
+        return;
+
+    size = sizeof(token_buf);
+    GetTokenInformation(token, TokenUser, token_buf, size, &size);
+    CloseHandle(token);
+
+    ConvertSidToStringSidW(((TOKEN_USER *)token_buf)->User.Sid, &sid);
+
+    if (!RegCreateKeyExW(HKEY_LOCAL_MACHINE, profile_list, 0, NULL, 0,
+                         KEY_ALL_ACCESS, NULL, &hkey, NULL))
+    {
+        if (!RegCreateKeyExW(hkey, sid, 0, NULL, 0,
+                             KEY_ALL_ACCESS, NULL, &profile_hkey, NULL))
+        {
+            DWORD flags = 0;
+            if (SHGetSpecialFolderPathW(NULL, profile, CSIDL_PROFILE, TRUE))
+                set_reg_value(profile_hkey, profile_image_path, profile);
+            RegSetValueExW( profile_hkey, L"Flags", 0, REG_DWORD, (const BYTE *)&flags, sizeof(flags) );
+            RegCloseKey(profile_hkey);
+        }
+
+        RegCloseKey(hkey);
+    }
+
+    LocalFree(sid);
+}
+
 /* execute rundll32 on the wine.inf file if necessary */
 static void update_wineprefix( BOOL force )
 {
@@ -1359,13 +1218,13 @@ static void update_wineprefix( BOOL force )
 
     if (!inf_path)
     {
-        WINE_MESSAGE( "wine: failed to update %s, wine.inf not found\n", prettyprint_configdir() );
+        WINE_MESSAGE( "wine: failed to update %s, wine.inf not found\n", debugstr_w( config_dir ));
         return;
     }
     if ((fd = _wopen( inf_path, O_RDONLY )) == -1)
     {
         WINE_MESSAGE( "wine: failed to update %s with %s: %s\n",
-                      prettyprint_configdir(), debugstr_w(inf_path), strerror(errno) );
+                      debugstr_w(config_dir), debugstr_w(inf_path), strerror(errno) );
         goto done;
     }
     fstat( fd, &st );
@@ -1393,9 +1252,9 @@ static void update_wineprefix( BOOL force )
             DestroyWindow( hwnd );
         }
         install_root_pnp_devices();
-        create_etc_stub_files();
+        update_user_profile();
 
-        WINE_MESSAGE( "wine: configuration in '%s' has been updated.\n", prettyprint_configdir() );
+        WINE_MESSAGE( "wine: configuration in %s has been updated.\n", debugstr_w(prettyprint_configdir()) );
     }
 
 done:
@@ -1602,7 +1461,6 @@ int __cdecl main( int argc, char *argv[] )
 
     ResetEvent( event );  /* in case this is a restart */
 
-    create_disk_serial_number();
     create_hardware_registry_keys();
     create_dynamic_registry_keys();
     create_environment_registry_keys();
@@ -1620,7 +1478,6 @@ int __cdecl main( int argc, char *argv[] )
     if (init || update) update_wineprefix( update );
 
     create_volatile_environment_registry_key();
-    create_proxy_settings();
 
     ProcessRunKeys( HKEY_LOCAL_MACHINE, RunOnceW, TRUE, TRUE );
 

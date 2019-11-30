@@ -86,6 +86,8 @@ struct quartz_vmr
     RECT target_rect;
     LONG VideoWidth;
     LONG VideoHeight;
+
+    HANDLE run_event;
 };
 
 static inline struct quartz_vmr *impl_from_BaseWindow(BaseWindow *wnd)
@@ -198,7 +200,7 @@ static DWORD VMR9_SendSampleData(struct quartz_vmr *This, VMR9PresentationInfo *
 
     TRACE("%p %p %d\n", This, data, size);
 
-    amt = &This->renderer.sink.pin.mtCurrent;
+    amt = &This->renderer.sink.pin.mt;
 
     if (IsEqualIID(&amt->formattype, &FORMAT_VideoInfo))
     {
@@ -259,6 +261,7 @@ static DWORD VMR9_SendSampleData(struct quartz_vmr *This, VMR9PresentationInfo *
 static HRESULT WINAPI VMR9_DoRenderSample(struct strmbase_renderer *iface, IMediaSample *pSample)
 {
     struct quartz_vmr *This = impl_from_IBaseFilter(&iface->filter.IBaseFilter_iface);
+    const HANDLE events[2] = {This->run_event, This->renderer.flush_event};
     LPBYTE pbSrcStream = NULL;
     long cbSrcStream = 0;
     REFERENCE_TIME tStart, tStop;
@@ -317,6 +320,13 @@ static HRESULT WINAPI VMR9_DoRenderSample(struct strmbase_renderer *iface, IMedi
 
     VMR9_SendSampleData(This, &info, pbSrcStream, cbSrcStream);
     IDirect3DSurface9_Release(info.lpSurf);
+
+    if (This->renderer.filter.state == State_Paused)
+    {
+        LeaveCriticalSection(&This->renderer.csRenderLock);
+        WaitForMultipleObjects(2, events, FALSE, INFINITE);
+        EnterCriticalSection(&This->renderer.csRenderLock);
+    }
 
     return hr;
 }
@@ -428,6 +438,7 @@ static void vmr_start_stream(struct strmbase_renderer *iface)
         SWP_NOZORDER|SWP_NOMOVE|SWP_DEFERERASE);
     ShowWindow(This->baseControlWindow.baseWindow.hWnd, SW_SHOW);
     GetClientRect(This->baseControlWindow.baseWindow.hWnd, &This->target_rect);
+    SetEvent(This->run_event);
 }
 
 static void vmr_stop_stream(struct strmbase_renderer *iface)
@@ -438,6 +449,7 @@ static void vmr_stop_stream(struct strmbase_renderer *iface)
 
     if (This->renderer.filter.state == State_Running)
         IVMRImagePresenter9_StopPresenting(This->presenter, This->cookie);
+    ResetEvent(This->run_event);
 }
 
 static HRESULT WINAPI VMR9_ShouldDrawSampleNow(struct strmbase_renderer *iface,
@@ -502,6 +514,7 @@ static void vmr_destroy(struct strmbase_renderer *iface)
         filter->allocator_d3d9_dev = NULL;
     }
 
+    CloseHandle(filter->run_event);
     FreeLibrary(filter->hD3d9);
     strmbase_renderer_cleanup(&filter->renderer);
     CoTaskMemFree(filter);
@@ -609,7 +622,7 @@ static HRESULT WINAPI VMR9_GetSourceRect(BaseControlVideo* This, RECT *pSourceRe
 static HRESULT WINAPI VMR9_GetStaticImage(BaseControlVideo* This, LONG *pBufferSize, LONG *pDIBImage)
 {
     struct quartz_vmr* pVMR9 = impl_from_BaseControlVideo(This);
-    AM_MEDIA_TYPE *amt = &pVMR9->renderer.sink.pin.mtCurrent;
+    AM_MEDIA_TYPE *amt = &pVMR9->renderer.sink.pin.mt;
     BITMAPINFOHEADER *bmiHeader;
     LONG needed_size;
     char *ptr;
@@ -679,7 +692,7 @@ static VIDEOINFOHEADER* WINAPI VMR9_GetVideoFormat(BaseControlVideo* This)
 
     TRACE("(%p/%p)\n", pVMR9, This);
 
-    pmt = &pVMR9->renderer.sink.pin.mtCurrent;
+    pmt = &pVMR9->renderer.sink.pin.mt;
     if (IsEqualIID(&pmt->formattype, &FORMAT_VideoInfo)) {
         return (VIDEOINFOHEADER*)pmt->pbFormat;
     } else if (IsEqualIID(&pmt->formattype, &FORMAT_VideoInfo2)) {
@@ -2239,10 +2252,11 @@ static HRESULT vmr_create(IUnknown *outer, void **out, const CLSID *clsid)
         goto fail;
 
     hr = strmbase_video_init(&pVMR->baseControlVideo, &pVMR->renderer.filter,
-            &pVMR->renderer.filter.csFilter, &pVMR->renderer.sink.pin,
-            &renderer_BaseControlVideoFuncTable);
+            &pVMR->renderer.sink.pin, &renderer_BaseControlVideoFuncTable);
     if (FAILED(hr))
         goto fail;
+
+    pVMR->run_event = CreateEventW(NULL, TRUE, FALSE, NULL);
 
     *out = &pVMR->renderer.filter.IUnknown_inner;
     ZeroMemory(&pVMR->source_rect, sizeof(RECT));

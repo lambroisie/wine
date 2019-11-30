@@ -1188,14 +1188,14 @@ static inline struct gstdemux_source *impl_from_IMediaSeeking(IMediaSeeking *ifa
     return CONTAINING_RECORD(iface, struct gstdemux_source, seek.IMediaSeeking_iface);
 }
 
-static IPin *gstdemux_get_pin(struct strmbase_filter *base, unsigned int index)
+static struct strmbase_pin *gstdemux_get_pin(struct strmbase_filter *base, unsigned int index)
 {
     struct gstdemux *filter = impl_from_strmbase_filter(base);
 
     if (!index)
-        return &filter->sink.IPin_iface;
+        return &filter->sink;
     else if (index <= filter->cStreams)
-        return &filter->ppPins[index - 1]->pin.pin.IPin_iface;
+        return &filter->ppPins[index - 1]->pin.pin;
     return NULL;
 }
 
@@ -1216,7 +1216,7 @@ static void gstdemux_destroy(struct strmbase_filter *iface)
         assert(hr == S_OK);
     }
 
-    FreeMediaType(&filter->sink.mtCurrent);
+    FreeMediaType(&filter->sink.mt);
     if (filter->alloc)
         IMemAllocator_Release(filter->alloc);
     filter->alloc = NULL;
@@ -2022,7 +2022,7 @@ static HRESULT WINAPI GSTInPin_ReceiveConnection(IPin *iface, IPin *pReceivePin,
         if (pAlloc)
             IMemAllocator_Release(pAlloc);
         if (SUCCEEDED(hr)) {
-            CopyMediaType(&filter->sink.mtCurrent, pmt);
+            CopyMediaType(&filter->sink.mt, pmt);
             filter->sink.peer = pReceivePin;
             IPin_AddRef(pReceivePin);
             hr = IMemAllocator_Commit(filter->alloc);

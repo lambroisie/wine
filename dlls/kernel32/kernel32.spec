@@ -248,7 +248,7 @@
 @ stub ConsoleSubst
 @ stdcall -import ContinueDebugEvent(long long long)
 # @ stub ConvertCalDateTimeToSystemTime
-@ stdcall ConvertDefaultLocale (long)
+@ stdcall -import ConvertDefaultLocale (long)
 @ stdcall -import ConvertFiberToThread()
 # @ stub ConvertNLSDayOfWeekToWin32DayOfWeek
 # @ stub ConvertSystemTimeToCalDateTime
@@ -394,14 +394,14 @@
 @ stdcall EnterCriticalSection(ptr) ntdll.RtlEnterCriticalSection
 @ stdcall EnumCalendarInfoA(ptr long long long)
 @ stdcall EnumCalendarInfoExA(ptr long long long)
-@ stdcall EnumCalendarInfoExEx(ptr wstr long wstr long long)
-@ stdcall EnumCalendarInfoExW(ptr long long long)
-@ stdcall EnumCalendarInfoW(ptr long long long)
+@ stdcall -import EnumCalendarInfoExEx(ptr wstr long wstr long long)
+@ stdcall -import EnumCalendarInfoExW(ptr long long long)
+@ stdcall -import EnumCalendarInfoW(ptr long long long)
 @ stdcall EnumDateFormatsA(ptr long long)
 @ stdcall EnumDateFormatsExA(ptr long long)
-@ stdcall EnumDateFormatsExEx(ptr wstr long long)
-@ stdcall EnumDateFormatsExW(ptr long long)
-@ stdcall EnumDateFormatsW(ptr long long)
+@ stdcall -import EnumDateFormatsExEx(ptr wstr long long)
+@ stdcall -import EnumDateFormatsExW(ptr long long)
+@ stdcall -import EnumDateFormatsW(ptr long long)
 @ stdcall EnumLanguageGroupLocalesA(ptr long long ptr)
 @ stdcall -import EnumLanguageGroupLocalesW(ptr long long ptr)
 @ stdcall EnumResourceLanguagesA(long str str ptr long)
@@ -418,7 +418,7 @@
 @ stdcall EnumResourceTypesW(long ptr long)
 @ stdcall EnumSystemCodePagesA(ptr long)
 @ stdcall -import EnumSystemCodePagesW(ptr long)
-@ stdcall EnumSystemFirmwareTables(long ptr long)
+@ stdcall -import EnumSystemFirmwareTables(long ptr long)
 @ stdcall EnumSystemGeoID(long long ptr)
 @ stdcall EnumSystemLanguageGroupsA(ptr long ptr)
 @ stdcall -import EnumSystemLanguageGroupsW(ptr long ptr)
@@ -426,8 +426,8 @@
 @ stdcall -import EnumSystemLocalesEx(ptr long long ptr)
 @ stdcall -import EnumSystemLocalesW(ptr long)
 @ stdcall EnumTimeFormatsA(ptr long long)
-@ stdcall EnumTimeFormatsEx(ptr wstr long long)
-@ stdcall EnumTimeFormatsW(ptr long long)
+@ stdcall -import EnumTimeFormatsEx(ptr wstr long long)
+@ stdcall -import EnumTimeFormatsW(ptr long long)
 @ stdcall EnumUILanguagesA(ptr long long)
 @ stdcall -import EnumUILanguagesW(ptr long long)
 # @ stub EnumerateLocalComputerNamesA
@@ -521,7 +521,7 @@
 @ stdcall FlushProcessWriteBuffers()
 @ stdcall -import FlushViewOfFile(ptr long)
 @ stdcall FoldStringA(long str long ptr long)
-@ stdcall FoldStringW(long wstr long ptr long)
+@ stdcall -import FoldStringW(long wstr long ptr long)
 @ stdcall FormatMessageA(long ptr long long ptr long ptr)
 @ stdcall FormatMessageW(long ptr long long ptr long ptr)
 @ stdcall FreeConsole()
@@ -537,7 +537,7 @@
 @ stub FreeVirtualBuffer
 @ stdcall -import GenerateConsoleCtrlEvent(long long)
 @ stdcall -i386 -private Get16DLLAddress(long str) krnl386.exe16.Get16DLLAddress
-@ stdcall GetACP()
+@ stdcall -import GetACP()
 @ stdcall GetActiveProcessorCount(long)
 @ stdcall GetActiveProcessorGroupCount()
 # @ stub GetApplicationRecoveryCallback
@@ -548,16 +548,16 @@
 @ stdcall GetBinaryTypeA(str ptr)
 @ stdcall GetBinaryTypeW(wstr ptr)
 # @ stub GetCPFileNameFromRegistry
-@ stdcall GetCPInfo(long ptr)
+@ stdcall -import GetCPInfo(long ptr)
 @ stdcall GetCPInfoExA(long long ptr)
-@ stdcall GetCPInfoExW(long long ptr)
+@ stdcall -import GetCPInfoExW(long long ptr)
 # @ stub GetCalendarDateFormat
 # @ stub GetCalendarDateFormatEx
 # @ stub GetCalendarDaysInMonth
 # @ stub GetCalendarDifferenceInDays
 @ stdcall GetCalendarInfoA(long long long ptr long ptr)
-@ stdcall GetCalendarInfoW(long long long ptr long ptr)
-@ stdcall GetCalendarInfoEx(wstr long ptr long ptr long ptr)
+@ stdcall -import GetCalendarInfoW(long long long ptr long ptr)
+@ stdcall -import GetCalendarInfoEx(wstr long ptr long ptr long ptr)
 # @ stub GetCalendarMonthsInYear
 # @ stub GetCalendarSupportedDateRange
 # @ stub GetCalendarWeekNumber
@@ -623,7 +623,7 @@
 @ stdcall GetCurrencyFormatW(long long wstr ptr ptr long)
 @ stdcall -import GetCurrentActCtx(ptr)
 @ stdcall GetCurrentConsoleFont(long long ptr)
-# @ stub GetCurrentConsoleFontEx
+@ stdcall GetCurrentConsoleFontEx(long long ptr)
 @ stdcall -import GetCurrentDirectoryA(long ptr)
 @ stdcall -import GetCurrentDirectoryW(long ptr)
 @ stdcall GetCurrentPackageFamilyName(ptr ptr)
@@ -698,14 +698,14 @@
 @ stdcall -import GetHandleInformation(long ptr)
 @ stub -i386 GetLSCallbackTarget
 @ stub -i386 GetLSCallbackTemplate
-@ stdcall GetLargePageMinimum()
+@ stdcall -import GetLargePageMinimum()
 @ stdcall -import GetLargestConsoleWindowSize(long)
 @ stdcall -import GetLastError()
 @ stub GetLinguistLangSize
 @ stdcall -import GetLocalTime(ptr)
-@ stdcall GetLocaleInfoA(long long ptr long)
+@ stdcall -import GetLocaleInfoA(long long ptr long)
 @ stdcall GetLocaleInfoW(long long ptr long)
-@ stdcall GetLocaleInfoEx(wstr long ptr long)
+@ stdcall -import GetLocaleInfoEx(wstr long ptr long)
 @ stdcall GetLogicalDriveStringsA(long ptr)
 @ stdcall GetLogicalDriveStringsW(long ptr)
 @ stdcall GetLogicalDrives()
@@ -734,7 +734,7 @@
 @ stdcall -import GetNamedPipeInfo(long ptr ptr ptr ptr)
 @ stdcall GetNamedPipeServerProcessId(long ptr)
 @ stdcall GetNamedPipeServerSessionId(long ptr)
-@ stdcall GetNativeSystemInfo(ptr)
+@ stdcall -import GetNativeSystemInfo(ptr)
 @ stdcall -arch=x86_64 GetNextUmsListItem(ptr)
 @ stub GetNextVDMCommand
 @ stub GetNlsSectionName
@@ -758,11 +758,12 @@
 @ stdcall GetNumberOfConsoleFonts()
 @ stdcall -import GetNumberOfConsoleInputEvents(long ptr)
 @ stdcall GetNumberOfConsoleMouseButtons(ptr)
-@ stdcall GetOEMCP()
+@ stdcall -import GetOEMCP()
 @ stdcall -import GetOverlappedResult(long ptr ptr long)
+@ stdcall -import GetOverlappedResultEx(long ptr ptr long long)
 @ stdcall GetUserPreferredUILanguages(long ptr ptr ptr)
 @ stdcall GetPackageFullName(long ptr ptr)
-@ stdcall GetPhysicallyInstalledSystemMemory(ptr)
+@ stdcall -import GetPhysicallyInstalledSystemMemory(ptr)
 @ stdcall -import GetPriorityClass(long)
 @ stdcall GetPrivateProfileIntA(str str long str)
 @ stdcall GetPrivateProfileIntW(wstr wstr long wstr)
@@ -825,8 +826,8 @@
 @ stdcall GetSystemDEPPolicy()
 @ stdcall GetSystemDirectoryA(ptr long)
 @ stdcall GetSystemDirectoryW(ptr long)
-@ stdcall GetSystemFirmwareTable(long long ptr long)
-@ stdcall GetSystemInfo(ptr)
+@ stdcall -import GetSystemFirmwareTable(long long ptr long)
+@ stdcall -import GetSystemInfo(ptr)
 @ stdcall GetSystemPowerStatus(ptr)
 @ stdcall GetSystemPreferredUILanguages(long ptr ptr ptr)
 @ stdcall GetSystemRegistryQuota(ptr ptr)
@@ -847,6 +848,7 @@
 @ stdcall -import GetTempPathA(long ptr)
 @ stdcall -import GetTempPathW(long ptr)
 @ stdcall -import GetThreadContext(long ptr)
+@ stdcall -import GetThreadDescription(long ptr)
 @ stdcall -import GetThreadErrorMode()
 @ stdcall -import GetThreadGroupAffinity(long ptr)
 @ stdcall -import GetThreadIOPendingFlag(long ptr)
@@ -906,7 +908,7 @@
 @ stdcall GlobalHandle(ptr)
 @ stdcall GlobalLock(long)
 @ stdcall GlobalMemoryStatus(ptr)
-@ stdcall GlobalMemoryStatusEx(ptr)
+@ stdcall -import GlobalMemoryStatusEx(ptr)
 @ stdcall GlobalReAlloc(long long long)
 @ stdcall GlobalSize(long)
 @ stdcall GlobalUnWire(long)
@@ -975,12 +977,12 @@
 # @ stub IsCalendarLeapDay
 # @ stub IsCalendarLeapMonth
 # @ stub IsCalendarLeapYear
-@ stdcall IsDBCSLeadByte(long)
-@ stdcall IsDBCSLeadByteEx(long long)
+@ stdcall -import IsDBCSLeadByte(long)
+@ stdcall -import IsDBCSLeadByteEx(long long)
 @ stdcall -import IsDebuggerPresent()
 @ stub -i386 IsLSCallback
 # @ stub IsNLSDefinedString
-@ stdcall IsNormalizedString(long wstr long)
+@ stdcall -import IsNormalizedString(long wstr long)
 @ stdcall -import IsProcessInJob(long long ptr)
 @ stdcall -import IsProcessorFeaturePresent(long)
 @ stub -i386 IsSLCallback
@@ -989,10 +991,10 @@
 @ stdcall IsThreadpoolTimerSet(ptr) ntdll.TpIsTimerSet
 # @ stub IsTimeZoneRedirectionEnabled
 # @ stub IsValidCalDateTime
-@ stdcall IsValidCodePage(long)
+@ stdcall -import IsValidCodePage(long)
 @ stdcall -import IsValidLanguageGroup(long long)
-@ stdcall IsValidLocale(long long)
-@ stdcall IsValidLocaleName(wstr)
+@ stdcall -import IsValidLocale(long long)
+@ stdcall -import IsValidLocaleName(wstr)
 # @ stub IsValidUILanguage
 @ stdcall -import IsWow64Process(ptr ptr)
 @ stdcall K32EmptyWorkingSet(long)
@@ -1061,7 +1063,7 @@
 @ stdcall LocalShrink(long long)
 @ stdcall LocalSize(long)
 @ stdcall -import LocalUnlock(long)
-@ stdcall LocaleNameToLCID(wstr long)
+@ stdcall -import LocaleNameToLCID(wstr long)
 # @ stub LocateXStateFeature
 @ stdcall -import LockFile(long long long long long)
 @ stdcall -import LockFileEx(long long long long long ptr)
@@ -1105,7 +1107,7 @@
 # @ stub NlsUpdateLocale
 # @ stub NlsUpdateSystemLocale
 # @ stub NlsWriteEtwEvent
-@ stdcall NormalizeString(long wstr long ptr long)
+@ stdcall -import NormalizeString(long wstr long ptr long)
 # @ stub NotifyMountMgr
 @ stub NotifyNLSUserCache
 # @ stub NotifyUILanguageChange
@@ -1200,48 +1202,48 @@
 @ stdcall -import ReadFileScatter(long ptr long ptr ptr)
 @ stdcall -import ReadProcessMemory(long ptr ptr long ptr)
 # @ stub ReadThreadProfilingData
-@ stdcall -private RegCloseKey(long) advapi32.RegCloseKey
-@ stdcall -private RegCreateKeyExA(long str long ptr long long ptr ptr ptr) advapi32.RegCreateKeyExA
-@ stdcall -private RegCreateKeyExW(long wstr long ptr long long ptr ptr ptr) advapi32.RegCreateKeyExW
-@ stdcall -private RegDeleteKeyExA(long str long long) advapi32.RegDeleteKeyExA
-@ stdcall -private RegDeleteKeyExW(long wstr long long) advapi32.RegDeleteKeyExW
-@ stdcall -private RegDeleteTreeA(long str) advapi32.RegDeleteTreeA
-@ stdcall -private RegDeleteTreeW(long wstr) advapi32.RegDeleteTreeW
-@ stdcall -private RegDeleteValueA(long str) advapi32.RegDeleteValueA
-@ stdcall -private RegDeleteValueW(long wstr) advapi32.RegDeleteValueW
+@ stdcall -private -import RegCloseKey(long)
+@ stdcall -private -import RegCreateKeyExA(long str long ptr long long ptr ptr ptr)
+@ stdcall -private -import RegCreateKeyExW(long wstr long ptr long long ptr ptr ptr)
+@ stdcall -private -import RegDeleteKeyExA(long str long long)
+@ stdcall -private -import RegDeleteKeyExW(long wstr long long)
+@ stdcall -private -import RegDeleteTreeA(long str)
+@ stdcall -private -import RegDeleteTreeW(long wstr)
+@ stdcall -private -import RegDeleteValueA(long str)
+@ stdcall -private -import RegDeleteValueW(long wstr)
 # stub RegDisablePredefinedCacheEx
-@ stdcall -private RegEnumKeyExA(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumKeyExA
-@ stdcall -private RegEnumKeyExW(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumKeyExW
-@ stdcall -private RegEnumValueA(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumValueA
-@ stdcall -private RegEnumValueW(long long ptr ptr ptr ptr ptr ptr) advapi32.RegEnumValueW
-@ stdcall -private RegFlushKey(long) advapi32.RegFlushKey
-@ stdcall -private RegGetKeySecurity(long long ptr ptr) advapi32.RegGetKeySecurity
-@ stdcall -private RegGetValueA(long str str long ptr ptr ptr) advapi32.RegGetValueA
-@ stdcall -private RegGetValueW(long wstr wstr long ptr ptr ptr) advapi32.RegGetValueW
+@ stdcall -private -import RegEnumKeyExA(long long ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegEnumKeyExW(long long ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegEnumValueA(long long ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegEnumValueW(long long ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegFlushKey(long)
+@ stdcall -private -import RegGetKeySecurity(long long ptr ptr)
+@ stdcall -private -import RegGetValueA(long str str long ptr ptr ptr)
+@ stdcall -private -import RegGetValueW(long wstr wstr long ptr ptr ptr)
 # stub RegKrnGetGlobalState
 # stub RegKrnInitialize
-@ stdcall -private RegLoadKeyA(long str str) advapi32.RegLoadKeyA
-@ stdcall -private RegLoadKeyW(long wstr wstr) advapi32.RegLoadKeyW
-@ stdcall -private RegLoadMUIStringA(long str str long ptr long str) advapi32.RegLoadMUIStringA
-@ stdcall -private RegLoadMUIStringW(long wstr wstr long ptr long wstr) advapi32.RegLoadMUIStringW
-@ stdcall -private RegNotifyChangeKeyValue(long long long long long) advapi32.RegNotifyChangeKeyValue
-@ stdcall -private RegOpenCurrentUser(long ptr) advapi32.RegOpenCurrentUser
-@ stdcall -private RegOpenKeyExA(long str long long ptr) advapi32.RegOpenKeyExA
-@ stdcall -private RegOpenKeyExW(long wstr long long ptr) advapi32.RegOpenKeyExW
-@ stdcall -private RegOpenUserClassesRoot(ptr long long ptr) advapi32.RegOpenUserClassesRoot
-@ stdcall -private RegQueryInfoKeyA(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr) advapi32.RegQueryInfoKeyA
-@ stdcall -private RegQueryInfoKeyW(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr) advapi32.RegQueryInfoKeyW
-@ stdcall -private RegQueryValueExA(long str ptr ptr ptr ptr) advapi32.RegQueryValueExA
-@ stdcall -private RegQueryValueExW(long wstr ptr ptr ptr ptr) advapi32.RegQueryValueExW
-@ stdcall -private RegRestoreKeyA(long str long) advapi32.RegRestoreKeyA
-@ stdcall -private RegRestoreKeyW(long wstr long) advapi32.RegRestoreKeyW
-# stub RegSaveKeyExA
-# stub RegSaveKeyExW
-@ stdcall -private RegSetKeySecurity(long long ptr) advapi32.RegSetKeySecurity
-@ stdcall -private RegSetValueExA(long str long long ptr long) advapi32.RegSetValueExA
-@ stdcall -private RegSetValueExW(long wstr long long ptr long) advapi32.RegSetValueExW
-@ stdcall -private RegUnLoadKeyA(long str) advapi32.RegUnLoadKeyA
-@ stdcall -private RegUnLoadKeyW(long wstr) advapi32.RegUnLoadKeyW
+@ stdcall -private -import RegLoadKeyA(long str str)
+@ stdcall -private -import RegLoadKeyW(long wstr wstr)
+@ stdcall -private -import RegLoadMUIStringA(long str str long ptr long str)
+@ stdcall -private -import RegLoadMUIStringW(long wstr wstr long ptr long wstr)
+@ stdcall -private -import RegNotifyChangeKeyValue(long long long long long)
+@ stdcall -private -import RegOpenCurrentUser(long ptr)
+@ stdcall -private -import RegOpenKeyExA(long str long long ptr)
+@ stdcall -private -import RegOpenKeyExW(long wstr long long ptr)
+@ stdcall -private -import RegOpenUserClassesRoot(ptr long long ptr)
+@ stdcall -private -import RegQueryInfoKeyA(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegQueryInfoKeyW(long ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
+@ stdcall -private -import RegQueryValueExA(long str ptr ptr ptr ptr)
+@ stdcall -private -import RegQueryValueExW(long wstr ptr ptr ptr ptr)
+@ stdcall -private -import RegRestoreKeyA(long str long)
+@ stdcall -private -import RegRestoreKeyW(long wstr long)
+@ stdcall -private -import RegSaveKeyExA(long str ptr long)
+@ stdcall -private -import RegSaveKeyExW(long wstr ptr long)
+@ stdcall -private -import RegSetKeySecurity(long long ptr)
+@ stdcall -private -import RegSetValueExA(long str long long ptr long)
+@ stdcall -private -import RegSetValueExW(long wstr long long ptr long)
+@ stdcall -private -import RegUnLoadKeyA(long str)
+@ stdcall -private -import RegUnLoadKeyW(long wstr)
 @ stdcall RegisterApplicationRecoveryCallback(ptr ptr long long)
 @ stdcall RegisterApplicationRestart(wstr long)
 @ stub RegisterConsoleIME
@@ -1328,7 +1330,7 @@
 @ stdcall -import SearchPathW(wstr wstr wstr long ptr ptr)
 @ stdcall SetCPGlobal(long)
 @ stdcall SetCalendarInfoA(long long long str)
-@ stdcall SetCalendarInfoW(long long long wstr)
+@ stdcall -import SetCalendarInfoW(long long long wstr)
 # @ stub SetClientTimeZoneInformation
 # @ stub SetComPlusPackageInstallStatus
 @ stdcall -import SetCommBreak(long)

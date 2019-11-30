@@ -1066,6 +1066,7 @@ int __cdecl      MSVCRT_iswspace(MSVCRT_wint_t);
 int __cdecl      MSVCRT_iswdigit(MSVCRT_wint_t);
 int __cdecl      MSVCRT_isleadbyte(int);
 int __cdecl      MSVCRT__isleadbyte_l(int, MSVCRT__locale_t);
+int __cdecl      MSVCRT__isspace_l(int, MSVCRT__locale_t);
 
 void __cdecl     MSVCRT__lock_file(MSVCRT_FILE*);
 void __cdecl     MSVCRT__unlock_file(MSVCRT_FILE*);
@@ -1132,6 +1133,8 @@ int            __cdecl MSVCRT_mbtowc(MSVCRT_wchar_t*,const char*,MSVCRT_size_t);
 int            __cdecl MSVCRT_mbtowc_l(MSVCRT_wchar_t*,const char*,MSVCRT_size_t,MSVCRT__locale_t);
 MSVCRT_size_t  __cdecl MSVCRT_mbstowcs(MSVCRT_wchar_t*,const char*,MSVCRT_size_t);
 MSVCRT_size_t  __cdecl MSVCRT__mbstowcs_l(MSVCRT_wchar_t*, const char*, MSVCRT_size_t, MSVCRT__locale_t);
+int            __cdecl MSVCRT__mbstowcs_s_l(MSVCRT_size_t*, MSVCRT_wchar_t*,
+        MSVCRT_size_t, const char*, MSVCRT_size_t, MSVCRT__locale_t);
 MSVCRT_size_t  __cdecl MSVCRT_wcstombs(char*,const MSVCRT_wchar_t*,MSVCRT_size_t);
 MSVCRT_size_t  __cdecl MSVCRT__wcstombs_l(char*, const MSVCRT_wchar_t*, MSVCRT_size_t, MSVCRT__locale_t);
 MSVCRT_intptr_t __cdecl MSVCRT__spawnve(int,const char*,const char* const *,const char* const *);

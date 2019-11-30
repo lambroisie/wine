@@ -159,7 +159,7 @@
 @ stdcall CompareStringW(long long wstr long wstr long) kernel32.CompareStringW
 @ stdcall ConnectNamedPipe(long ptr)
 @ stdcall ContinueDebugEvent(long long long)
-@ stdcall ConvertDefaultLocale(long) kernel32.ConvertDefaultLocale
+@ stdcall ConvertDefaultLocale(long)
 @ stdcall ConvertFiberToThread()
 @ stdcall ConvertThreadToFiber(ptr)
 @ stdcall ConvertThreadToFiberEx(ptr long)
@@ -290,12 +290,12 @@
 # @ stub EnterCriticalPolicySectionInternal
 @ stdcall EnterCriticalSection(ptr) ntdll.RtlEnterCriticalSection
 # @ stub EnterSynchronizationBarrier
-@ stdcall EnumCalendarInfoExEx(ptr wstr long wstr long long) kernel32.EnumCalendarInfoExEx
-@ stdcall EnumCalendarInfoExW(ptr long long long) kernel32.EnumCalendarInfoExW
-@ stdcall EnumCalendarInfoW(ptr long long long) kernel32.EnumCalendarInfoW
-@ stdcall EnumDateFormatsExEx(ptr wstr long long) kernel32.EnumDateFormatsExEx
-@ stdcall EnumDateFormatsExW(ptr long long) kernel32.EnumDateFormatsExW
-@ stdcall EnumDateFormatsW(ptr long long) kernel32.EnumDateFormatsW
+@ stdcall EnumCalendarInfoExEx(ptr wstr long wstr long long)
+@ stdcall EnumCalendarInfoExW(ptr long long long)
+@ stdcall EnumCalendarInfoW(ptr long long long)
+@ stdcall EnumDateFormatsExEx(ptr wstr long long)
+@ stdcall EnumDateFormatsExW(ptr long long)
+@ stdcall EnumDateFormatsW(ptr long long)
 # @ stub EnumDeviceDrivers
 @ stdcall EnumDynamicTimeZoneInformation(long ptr)
 @ stdcall EnumLanguageGroupLocalesW(ptr long long ptr)
@@ -312,14 +312,14 @@
 @ stdcall EnumResourceTypesExA(long ptr long long long)
 @ stdcall EnumResourceTypesExW(long ptr long long long)
 @ stdcall EnumSystemCodePagesW(ptr long)
-@ stdcall EnumSystemFirmwareTables(long ptr long) kernel32.EnumSystemFirmwareTables
+@ stdcall EnumSystemFirmwareTables(long ptr long)
 @ stdcall EnumSystemGeoID(long long ptr) kernel32.EnumSystemGeoID
 @ stdcall EnumSystemLanguageGroupsW(ptr long ptr)
 @ stdcall EnumSystemLocalesA(ptr long)
 @ stdcall EnumSystemLocalesEx(ptr long long ptr)
 @ stdcall EnumSystemLocalesW(ptr long)
-@ stdcall EnumTimeFormatsEx(ptr wstr long long) kernel32.EnumTimeFormatsEx
-@ stdcall EnumTimeFormatsW(ptr long long) kernel32.EnumTimeFormatsW
+@ stdcall EnumTimeFormatsEx(ptr wstr long long)
+@ stdcall EnumTimeFormatsW(ptr long long)
 @ stdcall EnumUILanguagesW(ptr long long)
 # @ stub EnumerateStateAtomValues
 # @ stub EnumerateStateContainerItems
@@ -384,7 +384,7 @@
 @ stdcall FlushInstructionCache(long long long)
 @ stdcall FlushProcessWriteBuffers() kernel32.FlushProcessWriteBuffers
 @ stdcall FlushViewOfFile(ptr long)
-@ stdcall FoldStringW(long wstr long ptr long) kernel32.FoldStringW
+@ stdcall FoldStringW(long wstr long ptr long)
 # @ stub ForceSyncFgPolicyInternal
 # @ stub FormatApplicationUserModelId
 @ stdcall FormatMessageA(long ptr long long ptr long ptr) kernel32.FormatMessageA
@@ -402,7 +402,7 @@
 @ stdcall FreeUserPhysicalPages(long ptr ptr)
 @ stdcall GenerateConsoleCtrlEvent(long long)
 # @ stub GenerateGPNotificationInternal
-@ stdcall GetACP() kernel32.GetACP
+@ stdcall GetACP()
 @ stdcall GetAcceptLanguagesA(ptr ptr)
 @ stdcall GetAcceptLanguagesW(ptr ptr)
 @ stdcall GetAce(ptr long ptr)
@@ -421,12 +421,12 @@
 # @ stub GetAppliedGPOListInternalW
 @ stub GetCPFileNameFromRegistry
 @ stub GetCPHashNode
-@ stdcall GetCPInfo(long ptr) kernel32.GetCPInfo
-@ stdcall GetCPInfoExW(long long ptr) kernel32.GetCPInfoExW
+@ stdcall GetCPInfo(long ptr)
+@ stdcall GetCPInfoExW(long long ptr)
 # @ stub GetCachedSigningLevel
 @ stub GetCalendar
-@ stdcall GetCalendarInfoEx(wstr long ptr long ptr long ptr) kernel32.GetCalendarInfoEx
-@ stdcall GetCalendarInfoW(long long long ptr long ptr) kernel32.GetCalendarInfoW
+@ stdcall GetCalendarInfoEx(wstr long ptr long ptr long ptr)
+@ stdcall GetCalendarInfoW(long long long ptr long ptr)
 @ stdcall GetCommConfig(long ptr ptr)
 @ stdcall GetCommMask(long ptr)
 @ stdcall GetCommModemStatus(long ptr)
@@ -536,13 +536,13 @@
 # @ stub GetIntegratedDisplaySize
 # @ stub GetIsEdpEnabled
 @ stdcall GetKernelObjectSecurity(long long ptr long ptr)
-@ stdcall GetLargePageMinimum() kernel32.GetLargePageMinimum
+@ stdcall GetLargePageMinimum()
 @ stdcall GetLargestConsoleWindowSize(long)
 @ stdcall GetLastError() kernelbase_GetLastError
 @ stdcall GetLengthSid(ptr)
 @ stdcall GetLocalTime(ptr)
-@ stdcall GetLocaleInfoA(long long ptr long) kernel32.GetLocaleInfoA
-@ stdcall GetLocaleInfoEx(wstr long ptr long) kernel32.GetLocaleInfoEx
+@ stdcall GetLocaleInfoA(long long ptr long)
+@ stdcall GetLocaleInfoEx(wstr long ptr long)
 @ stub GetLocaleInfoHelper
 @ stdcall GetLocaleInfoW(long long ptr long) kernel32.GetLocaleInfoW
 @ stdcall GetLogicalDriveStringsW(long ptr) kernel32.GetLogicalDriveStringsW
@@ -572,7 +572,7 @@
 @ stub GetNamedPipeClientComputerNameW
 @ stdcall GetNamedPipeHandleStateW(long ptr ptr ptr ptr wstr long) kernel32.GetNamedPipeHandleStateW
 @ stdcall GetNamedPipeInfo(long ptr ptr ptr ptr)
-@ stdcall GetNativeSystemInfo(ptr) kernel32.GetNativeSystemInfo
+@ stdcall GetNativeSystemInfo(ptr)
 # @ stub GetNextFgPolicyRefreshInfoInternal
 @ stdcall GetNumaHighestNodeNumber(ptr)
 @ stdcall GetNumaNodeProcessorMaskEx(long ptr)
@@ -580,11 +580,11 @@
 @ stdcall GetNumberFormatEx(wstr long wstr ptr ptr long) kernel32.GetNumberFormatEx
 @ stdcall GetNumberFormatW(long long wstr ptr ptr long) kernel32.GetNumberFormatW
 @ stdcall GetNumberOfConsoleInputEvents(long ptr)
-@ stdcall GetOEMCP() kernel32.GetOEMCP
+@ stdcall GetOEMCP()
 # @ stub GetOsManufacturingMode
 # @ stub GetOsSafeBootMode
 @ stdcall GetOverlappedResult(long ptr ptr long)
-# @ stub GetOverlappedResultEx
+@ stdcall GetOverlappedResultEx(long ptr ptr long long)
 # @ stub GetPackageApplicationContext
 # @ stub GetPackageApplicationIds
 # @ stub GetPackageApplicationProperty
@@ -614,7 +614,7 @@
 # @ stub GetPackageVolumeSisPath
 # @ stub GetPackagesByPackageFamily
 # @ stub GetPerformanceInfo
-@ stdcall GetPhysicallyInstalledSystemMemory(ptr) kernel32.GetPhysicallyInstalledSystemMemory
+@ stdcall GetPhysicallyInstalledSystemMemory(ptr)
 # @ stub GetPreviousFgPolicyRefreshInfoInternal
 @ stdcall GetPriorityClass(long)
 @ stdcall GetPrivateObjectSecurity(ptr long ptr long ptr)
@@ -687,8 +687,8 @@
 @ stdcall GetSystemDirectoryA(ptr long)
 @ stdcall GetSystemDirectoryW(ptr long)
 @ stdcall GetSystemFileCacheSize(ptr ptr ptr)
-@ stdcall GetSystemFirmwareTable(long long ptr long) kernel32.GetSystemFirmwareTable
-@ stdcall GetSystemInfo(ptr) kernel32.GetSystemInfo
+@ stdcall GetSystemFirmwareTable(long long ptr long)
+@ stdcall GetSystemInfo(ptr)
 # @ stub GetSystemMetadataPath
 # @ stub GetSystemMetadataPathForPackage
 # @ stub GetSystemMetadataPathForPackageFamily
@@ -711,7 +711,7 @@
 @ stdcall GetTempPathA(long ptr)
 @ stdcall GetTempPathW(long ptr)
 @ stdcall GetThreadContext(long ptr)
-# @ stub GetThreadDescription
+@ stdcall GetThreadDescription(long ptr)
 @ stdcall GetThreadErrorMode()
 @ stdcall GetThreadGroupAffinity(long ptr)
 @ stdcall GetThreadIOPendingFlag(long ptr)
@@ -767,7 +767,7 @@
 # @ stub GetXStateFeaturesMask
 @ stdcall GlobalAlloc(long long)
 @ stdcall GlobalFree(long)
-@ stdcall GlobalMemoryStatusEx(ptr) kernel32.GlobalMemoryStatusEx
+@ stdcall GlobalMemoryStatusEx(ptr)
 # @ stub GuardCheckLongJumpTarget
 # @ stub HasPolicyForegroundProcessingCompletedInternal
 @ stdcall HashData(ptr long ptr long)
@@ -824,13 +824,13 @@
 @ stdcall -fastcall InterlockedPushListSList(ptr ptr ptr long) ntdll.RtlInterlockedPushListSList
 @ stdcall InterlockedPushListSListEx(ptr ptr ptr long) ntdll.RtlInterlockedPushListSListEx
 @ stub InternalLcidToName
-@ stub Internal_EnumCalendarInfo
-@ stub Internal_EnumDateFormats
+@ stdcall Internal_EnumCalendarInfo(ptr long long long long long long long)
+@ stdcall Internal_EnumDateFormats(ptr long long long long long long)
 @ stdcall Internal_EnumLanguageGroupLocales(ptr long long ptr long)
 @ stdcall Internal_EnumSystemCodePages(ptr long long)
 @ stdcall Internal_EnumSystemLanguageGroups(ptr long ptr long)
 @ stub Internal_EnumSystemLocales
-@ stub Internal_EnumTimeFormats
+@ stdcall Internal_EnumTimeFormats(ptr long long long long long)
 @ stdcall Internal_EnumUILanguages(ptr long long long)
 # @ stub InternetTimeFromSystemTimeA
 # @ stub InternetTimeFromSystemTimeW
@@ -853,8 +853,8 @@
 @ stdcall IsCharUpperA(long)
 @ stdcall IsCharUpperW(long)
 @ stdcall IsCharXDigitW(long)
-@ stdcall IsDBCSLeadByte(long) kernel32.IsDBCSLeadByte
-@ stdcall IsDBCSLeadByteEx(long long) kernel32.IsDBCSLeadByteEx
+@ stdcall IsDBCSLeadByte(long)
+@ stdcall IsDBCSLeadByteEx(long long)
 @ stdcall IsDebuggerPresent()
 # @ stub IsDeveloperModeEnabled
 # @ stub IsDeveloperModePolicyApplied
@@ -862,7 +862,7 @@
 # @ stub IsGlobalizationUserSettingsKeyRedirected
 @ stdcall IsInternetESCEnabled()
 @ stub IsNLSDefinedString
-@ stdcall IsNormalizedString(long wstr long) kernel32.IsNormalizedString
+@ stdcall IsNormalizedString(long wstr long)
 # @ stub IsProcessCritical
 @ stdcall IsProcessInJob(long long ptr)
 @ stdcall IsProcessorFeaturePresent(long)
@@ -874,10 +874,10 @@
 # @ stub IsTimeZoneRedirectionEnabled
 @ stdcall IsTokenRestricted(long)
 @ stdcall IsValidAcl(ptr)
-@ stdcall IsValidCodePage(long) kernel32.IsValidCodePage
+@ stdcall IsValidCodePage(long)
 @ stdcall IsValidLanguageGroup(long long)
-@ stdcall IsValidLocale(long long) kernel32.IsValidLocale
-@ stdcall IsValidLocaleName(wstr) kernel32.IsValidLocaleName
+@ stdcall IsValidLocale(long long)
+@ stdcall IsValidLocaleName(wstr)
 # @ stub IsValidNLSVersion
 @ stub IsValidRelativeSecurityDescriptor
 @ stdcall IsValidSecurityDescriptor(ptr)
@@ -938,7 +938,7 @@
 @ stdcall LocalLock(long)
 @ stdcall LocalReAlloc(long long long)
 @ stdcall LocalUnlock(long)
-@ stdcall LocaleNameToLCID(wstr long) kernel32.LocaleNameToLCID
+@ stdcall LocaleNameToLCID(wstr long)
 # @ stub LocateXStateFeature
 @ stdcall LockFile(long long long long long)
 @ stdcall LockFileEx(long long long long long ptr)
@@ -972,7 +972,7 @@
 @ stub NlsUpdateSystemLocale
 @ stub NlsValidateLocale
 @ stub NlsWriteEtwEvent
-@ stdcall NormalizeString(long wstr long ptr long) kernel32.NormalizeString
+@ stdcall NormalizeString(long wstr long ptr long)
 @ stub NotifyMountMgr
 @ stub NotifyRedirectedStringChange
 @ stdcall ObjectCloseAuditAlarmW(wstr ptr long)
@@ -1389,7 +1389,7 @@
 @ stdcall SearchPathW(wstr wstr wstr long ptr ptr)
 @ stdcall SetAclInformation(ptr ptr long long)
 # @ stub SetCachedSigningLevel
-@ stdcall SetCalendarInfoW(long long long wstr) kernel32.SetCalendarInfoW
+@ stdcall SetCalendarInfoW(long long long wstr)
 # @ stub SetClientDynamicTimeZoneInformation
 # @ stub SetClientTimeZoneInformation
 @ stdcall SetCommBreak(long)

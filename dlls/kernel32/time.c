@@ -47,14 +47,13 @@
 #define NONAMELESSUNION
 #include "windef.h"
 #include "winbase.h"
+#include "winreg.h"
 #include "winternl.h"
 #include "kernel_private.h"
 #include "wine/unicode.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(time);
-
-#define CALINFO_MAX_YEAR 2029
 
 static inline void longlong_to_filetime( LONGLONG t, FILETIME *ft )
 {
@@ -79,6 +78,10 @@ static inline ULONGLONG monotonic_counter(void)
     static mach_timebase_info_data_t timebase;
 
     if (!timebase.denom) mach_timebase_info( &timebase );
+#ifdef HAVE_MACH_CONTINUOUS_TIME
+    if (&mach_continuous_time != NULL)
+        return mach_continuous_time() * timebase.numer / timebase.denom / 100;
+#endif
     return mach_absolute_time() * timebase.numer / timebase.denom / 100;
 #elif defined(HAVE_CLOCK_GETTIME)
     struct timespec ts;
@@ -383,24 +386,6 @@ static BOOL reg_query_value(HKEY hkey, LPCWSTR name, DWORD type, void *data, DWO
     return TRUE;
 }
 
-static BOOL reg_load_mui_string(HKEY hkey, LPCWSTR value, LPWSTR buffer, DWORD size)
-{
-    static const WCHAR advapi32W[] = {'a','d','v','a','p','i','3','2','.','d','l','l',0};
-    DWORD (WINAPI *pRegLoadMUIStringW)(HKEY, LPCWSTR, LPWSTR, DWORD, DWORD *, DWORD, LPCWSTR);
-    HMODULE hDll;
-    BOOL ret = FALSE;
-
-    hDll = LoadLibraryExW(advapi32W, NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
-    if (hDll) {
-        pRegLoadMUIStringW = (void *)GetProcAddress(hDll, "RegLoadMUIStringW");
-        if (pRegLoadMUIStringW &&
-            !pRegLoadMUIStringW(hkey, value, buffer, size, NULL, 0, DIR_System))
-            ret = TRUE;
-        FreeLibrary(hDll);
-    }
-    return ret;
-}
-
 /***********************************************************************
  *  TIME_GetSpecificTimeZoneInfo
  *
@@ -440,14 +425,14 @@ static BOOL TIME_GetSpecificTimeZoneInfo( const WCHAR *key_name, WORD year,
     if (!TIME_GetSpecificTimeZoneKey( key_name, &time_zone_key ))
         return FALSE;
 
-    if (!reg_load_mui_string( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName) ) &&
+    if (RegLoadMUIStringW( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName), NULL, 0, DIR_System ) &&
         !reg_query_value( time_zone_key, stdW, REG_SZ, tzinfo->StandardName, sizeof(tzinfo->StandardName) ))
     {
         NtClose( time_zone_key );
         return FALSE;
     }
 
-    if (!reg_load_mui_string( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) ) &&
+    if (RegLoadMUIStringW( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName), NULL, 0, DIR_System ) &&
         !reg_query_value( time_zone_key, dltW, REG_SZ, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) ))
     {
         NtClose( time_zone_key );
@@ -832,219 +817,6 @@ int WINAPI GetCalendarInfoA(LCID lcid, CALID Calendar, CALTYPE CalType,
 }
 
 /*********************************************************************
- *	GetCalendarInfoW				(KERNEL32.@)
- *
- */
-int WINAPI GetCalendarInfoW(LCID Locale, CALID Calendar, CALTYPE CalType,
-			    LPWSTR lpCalData, int cchData, LPDWORD lpValue)
-{
-    static const LCTYPE caltype_lctype_map[] = {
-        0, /* not used */
-        0, /* CAL_ICALINTVALUE */
-        0, /* CAL_SCALNAME */
-        0, /* CAL_IYEAROFFSETRANGE */
-        0, /* CAL_SERASTRING */
-        LOCALE_SSHORTDATE,
-        LOCALE_SLONGDATE,
-        LOCALE_SDAYNAME1,
-        LOCALE_SDAYNAME2,
-        LOCALE_SDAYNAME3,
-        LOCALE_SDAYNAME4,
-        LOCALE_SDAYNAME5,
-        LOCALE_SDAYNAME6,
-        LOCALE_SDAYNAME7,
-        LOCALE_SABBREVDAYNAME1,
-        LOCALE_SABBREVDAYNAME2,
-        LOCALE_SABBREVDAYNAME3,
-        LOCALE_SABBREVDAYNAME4,
-        LOCALE_SABBREVDAYNAME5,
-        LOCALE_SABBREVDAYNAME6,
-        LOCALE_SABBREVDAYNAME7,
-        LOCALE_SMONTHNAME1,
-        LOCALE_SMONTHNAME2,
-        LOCALE_SMONTHNAME3,
-        LOCALE_SMONTHNAME4,
-        LOCALE_SMONTHNAME5,
-        LOCALE_SMONTHNAME6,
-        LOCALE_SMONTHNAME7,
-        LOCALE_SMONTHNAME8,
-        LOCALE_SMONTHNAME9,
-        LOCALE_SMONTHNAME10,
-        LOCALE_SMONTHNAME11,
-        LOCALE_SMONTHNAME12,
-        LOCALE_SMONTHNAME13,
-        LOCALE_SABBREVMONTHNAME1,
-        LOCALE_SABBREVMONTHNAME2,
-        LOCALE_SABBREVMONTHNAME3,
-        LOCALE_SABBREVMONTHNAME4,
-        LOCALE_SABBREVMONTHNAME5,
-        LOCALE_SABBREVMONTHNAME6,
-        LOCALE_SABBREVMONTHNAME7,
-        LOCALE_SABBREVMONTHNAME8,
-        LOCALE_SABBREVMONTHNAME9,
-        LOCALE_SABBREVMONTHNAME10,
-        LOCALE_SABBREVMONTHNAME11,
-        LOCALE_SABBREVMONTHNAME12,
-        LOCALE_SABBREVMONTHNAME13,
-        LOCALE_SYEARMONTH,
-        0, /* CAL_ITWODIGITYEARMAX */
-        LOCALE_SSHORTESTDAYNAME1,
-        LOCALE_SSHORTESTDAYNAME2,
-        LOCALE_SSHORTESTDAYNAME3,
-        LOCALE_SSHORTESTDAYNAME4,
-        LOCALE_SSHORTESTDAYNAME5,
-        LOCALE_SSHORTESTDAYNAME6,
-        LOCALE_SSHORTESTDAYNAME7,
-        LOCALE_SMONTHDAY,
-        0, /* CAL_SABBREVERASTRING */
-    };
-    DWORD localeflags = 0;
-    CALTYPE calinfo;
-
-    if (CalType & CAL_NOUSEROVERRIDE)
-	FIXME("flag CAL_NOUSEROVERRIDE used, not fully implemented\n");
-    if (CalType & CAL_USE_CP_ACP)
-	FIXME("flag CAL_USE_CP_ACP used, not fully implemented\n");
-
-    if (CalType & CAL_RETURN_NUMBER) {
-        if (!lpValue)
-        {
-            SetLastError( ERROR_INVALID_PARAMETER );
-            return 0;
-        }
-	if (lpCalData != NULL)
-	    WARN("lpCalData not NULL (%p) when it should!\n", lpCalData);
-	if (cchData != 0)
-	    WARN("cchData not 0 (%d) when it should!\n", cchData);
-    } else {
-	if (lpValue != NULL)
-	    WARN("lpValue not NULL (%p) when it should!\n", lpValue);
-    }
-
-    /* FIXME: No verification is made yet wrt Locale
-     * for the CALTYPES not requiring GetLocaleInfoA */
-
-    calinfo = CalType & 0xffff;
-
-    if (CalType & CAL_RETURN_GENITIVE_NAMES)
-        localeflags |= LOCALE_RETURN_GENITIVE_NAMES;
-
-    switch (calinfo) {
-	case CAL_ICALINTVALUE:
-            if (CalType & CAL_RETURN_NUMBER)
-                return GetLocaleInfoW(Locale, LOCALE_RETURN_NUMBER | LOCALE_ICALENDARTYPE,
-                        (LPWSTR)lpValue, 2);
-            return GetLocaleInfoW(Locale, LOCALE_ICALENDARTYPE, lpCalData, cchData);
-	case CAL_SCALNAME:
-            FIXME("Unimplemented caltype %d\n", calinfo);
-            if (lpCalData) *lpCalData = 0;
-	    return 1;
-	case CAL_IYEAROFFSETRANGE:
-            FIXME("Unimplemented caltype %d\n", calinfo);
-	    return 0;
-	case CAL_SERASTRING:
-            FIXME("Unimplemented caltype %d\n", calinfo);
-	    return 0;
-	case CAL_SSHORTDATE:
-	case CAL_SLONGDATE:
-	case CAL_SDAYNAME1:
-	case CAL_SDAYNAME2:
-	case CAL_SDAYNAME3:
-	case CAL_SDAYNAME4:
-	case CAL_SDAYNAME5:
-	case CAL_SDAYNAME6:
-	case CAL_SDAYNAME7:
-	case CAL_SABBREVDAYNAME1:
-	case CAL_SABBREVDAYNAME2:
-	case CAL_SABBREVDAYNAME3:
-	case CAL_SABBREVDAYNAME4:
-	case CAL_SABBREVDAYNAME5:
-	case CAL_SABBREVDAYNAME6:
-	case CAL_SABBREVDAYNAME7:
-	case CAL_SMONTHNAME1:
-	case CAL_SMONTHNAME2:
-	case CAL_SMONTHNAME3:
-	case CAL_SMONTHNAME4:
-	case CAL_SMONTHNAME5:
-	case CAL_SMONTHNAME6:
-	case CAL_SMONTHNAME7:
-	case CAL_SMONTHNAME8:
-	case CAL_SMONTHNAME9:
-	case CAL_SMONTHNAME10:
-	case CAL_SMONTHNAME11:
-	case CAL_SMONTHNAME12:
-	case CAL_SMONTHNAME13:
-	case CAL_SABBREVMONTHNAME1:
-	case CAL_SABBREVMONTHNAME2:
-	case CAL_SABBREVMONTHNAME3:
-	case CAL_SABBREVMONTHNAME4:
-	case CAL_SABBREVMONTHNAME5:
-	case CAL_SABBREVMONTHNAME6:
-	case CAL_SABBREVMONTHNAME7:
-	case CAL_SABBREVMONTHNAME8:
-	case CAL_SABBREVMONTHNAME9:
-	case CAL_SABBREVMONTHNAME10:
-	case CAL_SABBREVMONTHNAME11:
-	case CAL_SABBREVMONTHNAME12:
-	case CAL_SABBREVMONTHNAME13:
-	case CAL_SMONTHDAY:
-	case CAL_SYEARMONTH:
-	case CAL_SSHORTESTDAYNAME1:
-	case CAL_SSHORTESTDAYNAME2:
-	case CAL_SSHORTESTDAYNAME3:
-	case CAL_SSHORTESTDAYNAME4:
-	case CAL_SSHORTESTDAYNAME5:
-	case CAL_SSHORTESTDAYNAME6:
-	case CAL_SSHORTESTDAYNAME7:
-            return GetLocaleInfoW(Locale, caltype_lctype_map[calinfo] | localeflags, lpCalData, cchData);
-	case CAL_ITWODIGITYEARMAX:
-            if (CalType & CAL_RETURN_NUMBER)
-            {
-                *lpValue = CALINFO_MAX_YEAR;
-                return sizeof(DWORD) / sizeof(WCHAR);
-            }
-            else
-            {
-                static const WCHAR fmtW[] = {'%','u',0};
-                WCHAR buffer[10];
-                int ret = snprintfW( buffer, 10, fmtW, CALINFO_MAX_YEAR  ) + 1;
-                if (!lpCalData) return ret;
-                if (ret <= cchData)
-                {
-                    strcpyW( lpCalData, buffer );
-                    return ret;
-                }
-                SetLastError( ERROR_INSUFFICIENT_BUFFER );
-                return 0;
-            }
-	    break;
-	case CAL_SABBREVERASTRING:
-            FIXME("Unimplemented caltype %d\n", calinfo);
-	    return 0;
-	default:
-            FIXME("Unknown caltype %d\n", calinfo);
-            SetLastError(ERROR_INVALID_FLAGS);
-            return 0;
-    }
-    return 0;
-}
-
-/*********************************************************************
- *	GetCalendarInfoEx				(KERNEL32.@)
- */
-int WINAPI GetCalendarInfoEx(LPCWSTR locale, CALID calendar, LPCWSTR lpReserved, CALTYPE caltype,
-    LPWSTR data, int len, DWORD *value)
-{
-    static int once;
-
-    LCID lcid = LocaleNameToLCID(locale, 0);
-    if (!once++)
-        FIXME("(%s, %d, %p, 0x%08x, %p, %d, %p): semi-stub\n", debugstr_w(locale), calendar, lpReserved, caltype,
-        data, len, value);
-    return GetCalendarInfoW(lcid, calendar, caltype, data, len, value);
-}
-
-/*********************************************************************
  *	SetCalendarInfoA				(KERNEL32.@)
  *
  */
@@ -1052,18 +824,6 @@ int WINAPI	SetCalendarInfoA(LCID Locale, CALID Calendar, CALTYPE CalType, LPCSTR
 {
     FIXME("(%08x,%08x,%08x,%s): stub\n",
 	  Locale, Calendar, CalType, debugstr_a(lpCalData));
-    return 0;
-}
-
-/*********************************************************************
- *	SetCalendarInfoW				(KERNEL32.@)
- *
- *
- */
-int WINAPI	SetCalendarInfoW(LCID Locale, CALID Calendar, CALTYPE CalType, LPCWSTR lpCalData)
-{
-    FIXME("(%08x,%08x,%08x,%s): stub\n",
-	  Locale, Calendar, CalType, debugstr_w(lpCalData));
     return 0;
 }
 
@@ -1232,8 +992,8 @@ DWORD WINAPI GetDynamicTimeZoneInformation(DYNAMIC_TIME_ZONE_INFORMATION *tzinfo
 
     if (!TIME_GetSpecificTimeZoneKey( tzinfo->TimeZoneKeyName, &time_zone_key ))
         return TIME_ZONE_ID_INVALID;
-    reg_load_mui_string( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName) );
-    reg_load_mui_string( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName) );
+    RegLoadMUIStringW( time_zone_key, mui_stdW, tzinfo->StandardName, sizeof(tzinfo->StandardName), NULL, 0, DIR_System );
+    RegLoadMUIStringW( time_zone_key, mui_dltW, tzinfo->DaylightName, sizeof(tzinfo->DaylightName), NULL, 0, DIR_System );
     NtClose( time_zone_key );
 
     return TIME_ZoneID( (TIME_ZONE_INFORMATION*)tzinfo );

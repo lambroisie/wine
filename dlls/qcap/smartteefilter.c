@@ -37,7 +37,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(qcap);
 
 typedef struct {
     struct strmbase_filter filter;
-    BaseInputPin sink;
+    struct strmbase_sink sink;
     struct strmbase_source capture, preview;
 } SmartTeeFilter;
 
@@ -69,16 +69,16 @@ static const IBaseFilterVtbl SmartTeeFilterVtbl = {
     BaseFilterImpl_QueryVendorInfo
 };
 
-static IPin *smart_tee_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *smart_tee_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     SmartTeeFilter *filter = impl_from_strmbase_filter(iface);
 
     if (index == 0)
-        return &filter->sink.pin.IPin_iface;
+        return &filter->sink.pin;
     else if (index == 1)
-        return &filter->capture.pin.IPin_iface;
+        return &filter->capture.pin;
     else if (index == 2)
-        return &filter->preview.pin.IPin_iface;
+        return &filter->preview.pin;
     return NULL;
 }
 
@@ -142,7 +142,7 @@ static HRESULT sink_get_media_type(struct strmbase_pin *base,
     EnterCriticalSection(&This->filter.csFilter);
     if (This->sink.pin.peer)
     {
-        CopyMediaType(amt, &This->sink.pin.mtCurrent);
+        CopyMediaType(amt, &This->sink.pin.mt);
         hr = S_OK;
     }
     else
@@ -242,7 +242,7 @@ end:
     return hr;
 }
 
-static HRESULT WINAPI SmartTeeFilterInput_Receive(BaseInputPin *base, IMediaSample *inputSample)
+static HRESULT WINAPI SmartTeeFilterInput_Receive(struct strmbase_sink *base, IMediaSample *inputSample)
 {
     SmartTeeFilter *This = impl_from_strmbase_pin(&base->pin);
     IMediaSample *captureSample = NULL;
@@ -261,8 +261,8 @@ static HRESULT WINAPI SmartTeeFilterInput_Receive(BaseInputPin *base, IMediaSamp
     if (This->capture.pin.peer)
         hrCapture = copy_sample(inputSample, This->capture.pAllocator, &captureSample);
     LeaveCriticalSection(&This->filter.csFilter);
-    if (SUCCEEDED(hrCapture))
-        hrCapture = BaseOutputPinImpl_Deliver(&This->capture, captureSample);
+    if (SUCCEEDED(hrCapture) && This->capture.pMemInputPin)
+        hrCapture = IMemInputPin_Receive(This->capture.pMemInputPin, captureSample);
     if (captureSample)
         IMediaSample_Release(captureSample);
 
@@ -273,8 +273,8 @@ static HRESULT WINAPI SmartTeeFilterInput_Receive(BaseInputPin *base, IMediaSamp
     /* No timestamps on preview stream: */
     if (SUCCEEDED(hrPreview))
         hrPreview = IMediaSample_SetTime(previewSample, NULL, NULL);
-    if (SUCCEEDED(hrPreview))
-        hrPreview = BaseOutputPinImpl_Deliver(&This->preview, previewSample);
+    if (SUCCEEDED(hrPreview) && This->preview.pMemInputPin)
+        hrPreview = IMemInputPin_Receive(This->preview.pMemInputPin, previewSample);
     if (previewSample)
         IMediaSample_Release(previewSample);
 
@@ -285,7 +285,7 @@ static HRESULT WINAPI SmartTeeFilterInput_Receive(BaseInputPin *base, IMediaSamp
         return hrPreview;
 }
 
-static const BaseInputPinFuncTable SmartTeeFilterInputFuncs =
+static const struct strmbase_sink_ops sink_ops =
 {
     .base.pin_query_accept = sink_query_accept,
     .base.pin_get_media_type = sink_get_media_type,
@@ -331,7 +331,7 @@ static HRESULT source_get_media_type(struct strmbase_pin *iface,
     if (!filter->sink.pin.peer)
         hr = VFW_E_NOT_CONNECTED;
     else if (!index)
-        CopyMediaType(mt, &filter->sink.pin.mtCurrent);
+        CopyMediaType(mt, &filter->sink.pin.mt);
     else
         hr = VFW_S_NO_MORE_ITEMS;
 
@@ -418,8 +418,7 @@ IUnknown* WINAPI QCAP_createSmartTeeFilter(IUnknown *outer, HRESULT *phr)
     memset(object, 0, sizeof(*object));
 
     strmbase_filter_init(&object->filter, &SmartTeeFilterVtbl, outer, &CLSID_SmartTee, &filter_ops);
-    strmbase_sink_init(&object->sink, &SmartTeeFilterInputVtbl, &object->filter,
-            inputW, &SmartTeeFilterInputFuncs, NULL);
+    strmbase_sink_init(&object->sink, &SmartTeeFilterInputVtbl, &object->filter, inputW, &sink_ops, NULL);
     hr = CoCreateInstance(&CLSID_MemoryAllocator, NULL, CLSCTX_INPROC_SERVER,
             &IID_IMemAllocator, (void **)&object->sink.pAllocator);
     if (FAILED(hr))

@@ -450,6 +450,8 @@ AC_CHECK_HEADERS(\
 	CL/opencl.h \
 	QuickTime/ImageCompression.h \
 	Security/Security.h \
+	SystemConfiguration/SCDynamicStoreCopyDHCPInfo.h \
+	SystemConfiguration/SCNetworkConfiguration.h \
 	alias.h \
 	arpa/inet.h \
 	arpa/nameser.h \
@@ -788,6 +790,7 @@ case $host_os in
     AC_SUBST(APPLICATIONSERVICES_LIBS,"-framework ApplicationServices")
     AC_SUBST(CORESERVICES_LIBS,"-framework CoreServices")
     AC_SUBST(APPKIT_LIBS,"-framework AppKit")
+    AC_SUBST(SYSTEMCONFIGURATION_LIBS,"-framework SystemConfiguration")
 
     WINELOADER_LDFLAGS="-Wl,-pie,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,wine_info.plist"
 
@@ -2228,6 +2231,7 @@ AC_CHECK_FUNCS(\
 	getopt_long_only \
 	kqueue \
 	lstat \
+	mach_continuous_time \
 	pipe2 \
 	poll \
 	port_create \
@@ -2885,10 +2889,8 @@ Makefile: $srcdir/Makefile.in config.status \$(MAKEDEP)
 depend: \$(MAKEDEP) dummy
 	\$(MAKEDEP)])
 
-WINE_CONFIG_SYMLINK(fonts,fonts,[marlett.ttf,symbol.ttf,tahoma.ttf,tahomabd.ttf,wingding.ttf],["x$enable_fonts" != xno])
-WINE_CONFIG_SYMLINK(loader,loader,[l_intl.nls])
-WINE_CONFIG_SYMLINK(,tools,[wine],,winewrapper)
-WINE_CONFIG_SYMLINK(,tools,[wine64],["x$enable_win64" != xno -o -n "$with_wine64"],winewrapper)
+WINE_CONFIG_SYMLINK(wine,tools/winewrapper)
+WINE_CONFIG_SYMLINK(wine64,tools/winewrapper,["x$enable_win64" != xno -o -n "$with_wine64"])
 
 WINE_CONFIG_MAKEFILE(dlls/acledit)
 WINE_CONFIG_MAKEFILE(dlls/aclui)
@@ -3272,6 +3274,7 @@ WINE_CONFIG_MAKEFILE(dlls/ddrawex/tests)
 WINE_CONFIG_MAKEFILE(dlls/devenum)
 WINE_CONFIG_MAKEFILE(dlls/devenum/tests)
 WINE_CONFIG_MAKEFILE(dlls/dhcpcsvc)
+WINE_CONFIG_MAKEFILE(dlls/dhcpcsvc/tests)
 WINE_CONFIG_MAKEFILE(dlls/dhtmled.ocx)
 WINE_CONFIG_MAKEFILE(dlls/difxapi)
 WINE_CONFIG_MAKEFILE(dlls/dinput)
@@ -3795,6 +3798,7 @@ WINE_CONFIG_MAKEFILE(dlls/system.drv16,enable_win16)
 WINE_CONFIG_MAKEFILE(dlls/t2embed)
 WINE_CONFIG_MAKEFILE(dlls/t2embed/tests)
 WINE_CONFIG_MAKEFILE(dlls/tapi32)
+WINE_CONFIG_MAKEFILE(dlls/tapi32/tests)
 WINE_CONFIG_MAKEFILE(dlls/taskschd)
 WINE_CONFIG_MAKEFILE(dlls/taskschd/tests)
 WINE_CONFIG_MAKEFILE(dlls/tdh)

@@ -525,6 +525,17 @@ void d3dcaps_from_wined3dcaps(D3DCAPS9 *caps, const struct wined3d_caps *wined3d
     }
 }
 
+static void device_reset_viewport_state(struct d3d9_device *device)
+{
+    struct wined3d_viewport vp;
+    RECT rect;
+
+    wined3d_device_get_viewports(device->wined3d_device, NULL, &vp);
+    wined3d_stateblock_set_viewport(device->state, &vp);
+    wined3d_device_get_scissor_rects(device->wined3d_device, NULL, &rect);
+    wined3d_stateblock_set_scissor_rect(device->state, &rect);
+}
+
 static HRESULT WINAPI d3d9_device_QueryInterface(IDirect3DDevice9Ex *iface, REFIID riid, void **out)
 {
     TRACE("iface %p, riid %s, out %p.\n", iface, debugstr_guid(riid), out);
@@ -1013,8 +1024,11 @@ static HRESULT d3d9_device_reset(struct d3d9_device *device,
         if (!extended)
         {
             device->auto_mipmaps = 0;
+            wined3d_stateblock_set_render_state(device->state, WINED3D_RS_ZENABLE,
+                    !!swapchain_desc.enable_auto_depth_stencil);
             wined3d_device_set_render_state(device->wined3d_device, WINED3D_RS_ZENABLE,
                     !!swapchain_desc.enable_auto_depth_stencil);
+            device_reset_viewport_state(device);
         }
 
         if (FAILED(hr = d3d9_device_get_swapchains(device)))
@@ -1906,7 +1920,11 @@ static HRESULT WINAPI d3d9_device_SetRenderTarget(IDirect3DDevice9Ex *iface, DWO
     hr = wined3d_device_set_rendertarget_view(device->wined3d_device, idx, rtv, TRUE);
     d3d9_surface_release_rendertarget_view(surface_impl, rtv);
     if (SUCCEEDED(hr))
+    {
+        if (!idx)
+            device_reset_viewport_state(device);
         device->render_targets[idx] = surface_impl;
+    }
     wined3d_mutex_unlock();
 
     return hr;
@@ -2388,7 +2406,14 @@ static HRESULT WINAPI d3d9_device_BeginStateBlock(IDirect3DDevice9Ex *iface)
     TRACE("iface %p.\n", iface);
 
     wined3d_mutex_lock();
-    if (SUCCEEDED(hr = wined3d_device_begin_stateblock(device->wined3d_device, &stateblock)))
+    if (device->recording)
+    {
+        wined3d_mutex_unlock();
+        WARN("Trying to begin a stateblock while recording, returning D3DERR_INVALIDCALL.\n");
+        return D3DERR_INVALIDCALL;
+    }
+
+    if (SUCCEEDED(hr = wined3d_stateblock_create(device->wined3d_device, device->state, WINED3D_SBT_RECORDED, &stateblock)))
         device->update_state = device->recording = stateblock;
     wined3d_mutex_unlock();
 
@@ -2405,14 +2430,14 @@ static HRESULT WINAPI d3d9_device_EndStateBlock(IDirect3DDevice9Ex *iface, IDire
     TRACE("iface %p, stateblock %p.\n", iface, stateblock);
 
     wined3d_mutex_lock();
-    hr = wined3d_device_end_stateblock(device->wined3d_device);
-    if (FAILED(hr))
+    if (!device->recording)
     {
         wined3d_mutex_unlock();
-        WARN("Failed to end the stateblock, hr %#x.\n", hr);
-        return hr;
+        WARN("Trying to end a stateblock, but no stateblock is being recorded.\n");
+        return D3DERR_INVALIDCALL;
     }
     wined3d_stateblock = device->recording;
+    wined3d_stateblock_init_contained_states(wined3d_stateblock);
     device->recording = NULL;
     device->update_state = device->state;
     wined3d_mutex_unlock();
@@ -4586,7 +4611,7 @@ HRESULT device_init(struct d3d9_device *device, struct d3d9 *parent, struct wine
     if (flags & D3DCREATE_ADAPTERGROUP_DEVICE)
         count = caps.NumberOfAdaptersInGroup;
 
-    if (FAILED(hr = wined3d_stateblock_create(device->wined3d_device, WINED3D_SBT_PRIMARY, &device->state)))
+    if (FAILED(hr = wined3d_stateblock_create(device->wined3d_device, NULL, WINED3D_SBT_PRIMARY, &device->state)))
     {
         ERR("Failed to create the primary stateblock, hr %#x.\n", hr);
         wined3d_device_decref(device->wined3d_device);
@@ -4648,8 +4673,11 @@ HRESULT device_init(struct d3d9_device *device, struct d3d9 *parent, struct wine
     wined3d_swapchain_incref(d3d_swapchain->wined3d_swapchain);
     IDirect3DSwapChain9Ex_Release(&d3d_swapchain->IDirect3DSwapChain9Ex_iface);
 
+    wined3d_stateblock_set_render_state(device->state, WINED3D_RS_ZENABLE,
+            !!swapchain_desc->enable_auto_depth_stencil);
     wined3d_device_set_render_state(device->wined3d_device,
             WINED3D_RS_ZENABLE, !!swapchain_desc->enable_auto_depth_stencil);
+    device_reset_viewport_state(device);
 
     if (FAILED(hr = d3d9_device_get_swapchains(device)))
     {

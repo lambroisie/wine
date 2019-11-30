@@ -341,12 +341,12 @@ BOOL get_media_type(const WCHAR *filename, GUID *majortype, GUID *subtype, GUID 
     return FALSE;
 }
 
-static IPin *async_reader_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *async_reader_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     AsyncReader *filter = impl_from_strmbase_filter(iface);
 
     if (!index && filter->pszFileName)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     return NULL;
 }
 
@@ -651,7 +651,7 @@ static HRESULT WINAPI FileAsyncReaderPin_AttemptConnection(struct strmbase_sourc
 
     This->pin.peer = pReceivePin;
     IPin_AddRef(pReceivePin);
-    CopyMediaType(&This->pin.mtCurrent, pmt);
+    CopyMediaType(&This->pin.mt, pmt);
 
     hr = IPin_ReceiveConnection(pReceivePin, &This->pin.IPin_iface, pmt);
 
@@ -659,7 +659,7 @@ static HRESULT WINAPI FileAsyncReaderPin_AttemptConnection(struct strmbase_sourc
     {
         IPin_Release(This->pin.peer);
         This->pin.peer = NULL;
-        FreeMediaType(&This->pin.mtCurrent);
+        FreeMediaType(&This->pin.mt);
     }
 
     TRACE(" -- %x\n", hr);

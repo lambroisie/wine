@@ -1141,7 +1141,7 @@ static void PropertyStorage_PropNameDestroy(void *k, void *d, void *extra)
 static int PropertyStorage_PropCompare(const void *a, const void *b,
  void *extra)
 {
-    TRACE("(%d, %d)\n", PtrToUlong(a), PtrToUlong(b));
+    TRACE("(%u, %u)\n", PtrToUlong(a), PtrToUlong(b));
     return PtrToUlong(a) - PtrToUlong(b);
 }
 
@@ -1741,7 +1741,7 @@ static void PropertyStorage_MakePropertyIdOffset(DWORD propid, DWORD dwOffset,
      offsetof(PROPERTYIDOFFSET, dwOffset), dwOffset);
 }
 
-static inline HRESULT PropertStorage_WriteWStringToStream(IStream *stm,
+static inline HRESULT PropertyStorage_WriteWStringToStream(IStream *stm,
  LPCWSTR str, DWORD len, DWORD *written)
 {
 #ifdef WORDS_BIGENDIAN
@@ -1791,7 +1791,7 @@ static BOOL PropertyStorage_DictionaryWriter(const void *key,
         if (FAILED(c->hr))
             goto end;
         c->bytesWritten += sizeof(DWORD);
-        c->hr = PropertStorage_WriteWStringToStream(This->stm, key, keyLen,
+        c->hr = PropertyStorage_WriteWStringToStream(This->stm, key, keyLen,
          &count);
         if (FAILED(c->hr))
             goto end;

@@ -22,6 +22,7 @@
 #include "dshow.h"
 #include "d3d9.h"
 #include "vmr9.h"
+#include "wine/heap.h"
 #include "wine/strmbase.h"
 #include "wine/test.h"
 
@@ -882,11 +883,11 @@ static inline struct testfilter *impl_from_strmbase_filter(struct strmbase_filte
     return CONTAINING_RECORD(iface, struct testfilter, filter);
 }
 
-static IPin *testfilter_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *testfilter_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     struct testfilter *filter = impl_from_strmbase_filter(iface);
     if (!index)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     return NULL;
 }
 
@@ -937,14 +938,14 @@ static HRESULT WINAPI testsource_AttemptConnection(struct strmbase_source *iface
 
     iface->pin.peer = peer;
     IPin_AddRef(peer);
-    CopyMediaType(&iface->pin.mtCurrent, mt);
+    CopyMediaType(&iface->pin.mt, mt);
 
     if (FAILED(hr = IPin_ReceiveConnection(peer, &iface->pin.IPin_iface, mt)))
     {
         ok(hr == VFW_E_TYPE_NOT_ACCEPTED || hr == E_FAIL, "Got hr %#x.\n", hr);
         IPin_Release(peer);
         iface->pin.peer = NULL;
-        FreeMediaType(&iface->pin.mtCurrent);
+        FreeMediaType(&iface->pin.mt);
     }
 
     return hr;
@@ -962,6 +963,336 @@ static void testfilter_init(struct testfilter *filter)
     static const GUID clsid = {0xabacab};
     strmbase_filter_init(&filter->filter, &testfilter_vtbl, NULL, &clsid, &testfilter_ops);
     strmbase_source_init(&filter->source, &testsource_vtbl, &filter->filter, L"", &testsource_ops);
+}
+
+static void test_allocator(IMemInputPin *input)
+{
+    IMemAllocator *req_allocator, *ret_allocator;
+    ALLOCATOR_PROPERTIES props, req_props;
+    HRESULT hr;
+
+    hr = IMemInputPin_GetAllocatorRequirements(input, &props);
+    ok(hr == E_NOTIMPL, "Got hr %#x.\n", hr);
+
+    hr = IMemInputPin_GetAllocator(input, &ret_allocator);
+    todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    if (hr == S_OK)
+    {
+        hr = IMemAllocator_GetProperties(ret_allocator, &props);
+        ok(hr == S_OK, "Got hr %#x.\n", hr);
+        ok(!props.cBuffers, "Got %d buffers.\n", props.cBuffers);
+        ok(!props.cbBuffer, "Got size %d.\n", props.cbBuffer);
+        ok(!props.cbAlign, "Got alignment %d.\n", props.cbAlign);
+        ok(!props.cbPrefix, "Got prefix %d.\n", props.cbPrefix);
+
+        hr = IMemInputPin_NotifyAllocator(input, ret_allocator, TRUE);
+        ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+        req_props.cBuffers = 1;
+        req_props.cbBuffer = 32 * 16 * 4;
+        req_props.cbAlign = 1;
+        req_props.cbPrefix = 0;
+        hr = IMemAllocator_SetProperties(ret_allocator, &req_props, &props);
+        ok(hr == S_OK, "Got hr %#x.\n", hr);
+        ok(props.cBuffers == 1, "Got %d buffers.\n", props.cBuffers);
+        ok(props.cbBuffer == 32 * 16 * 4, "Got size %d.\n", props.cbBuffer);
+        ok(props.cbAlign == 1, "Got alignment %d.\n", props.cbAlign);
+        ok(!props.cbPrefix, "Got prefix %d.\n", props.cbPrefix);
+
+        IMemAllocator_Release(ret_allocator);
+    }
+
+    hr = IMemInputPin_NotifyAllocator(input, NULL, TRUE);
+    todo_wine ok(hr == E_FAIL, "Got hr %#x.\n", hr);
+
+    CoCreateInstance(&CLSID_MemoryAllocator, NULL, CLSCTX_INPROC_SERVER,
+            &IID_IMemAllocator, (void **)&req_allocator);
+
+    hr = IMemInputPin_NotifyAllocator(input, req_allocator, TRUE);
+    todo_wine ok(hr == E_FAIL, "Got hr %#x.\n", hr);
+
+    IMemAllocator_Release(req_allocator);
+}
+
+struct frame_thread_params
+{
+    IMemInputPin *sink;
+    IMediaSample *sample;
+};
+
+static DWORD WINAPI frame_thread(void *arg)
+{
+    struct frame_thread_params *params = arg;
+    HRESULT hr;
+
+    if (winetest_debug > 1) trace("%04x: Sending frame.\n", GetCurrentThreadId());
+    hr = IMemInputPin_Receive(params->sink, params->sample);
+    if (winetest_debug > 1) trace("%04x: Returned %#x.\n", GetCurrentThreadId(), hr);
+    IMediaSample_Release(params->sample);
+    heap_free(params);
+    return hr;
+}
+
+static HANDLE send_frame(IMemInputPin *sink)
+{
+    struct frame_thread_params *params = heap_alloc(sizeof(*params));
+    REFERENCE_TIME start_time, end_time;
+    IMemAllocator *allocator;
+    IMediaSample *sample;
+    HANDLE thread;
+    HRESULT hr;
+    BYTE *data;
+
+    hr = IMemInputPin_GetAllocator(sink, &allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMemAllocator_GetBuffer(allocator, &sample, NULL, NULL, 0);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaSample_GetPointer(sample, &data);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    memset(data, 0x55, 32 * 16 * 4);
+
+    hr = IMediaSample_SetActualDataLength(sample, 32 * 16 * 4);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    start_time = 0;
+    end_time = start_time + 10000000;
+    hr = IMediaSample_SetTime(sample, &start_time, &end_time);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    params->sink = sink;
+    params->sample = sample;
+    thread = CreateThread(NULL, 0, frame_thread, params, 0, NULL);
+
+    IMemAllocator_Release(allocator);
+    return thread;
+}
+
+static HRESULT join_thread_(int line, HANDLE thread)
+{
+    DWORD ret;
+    ok_(__FILE__, line)(!WaitForSingleObject(thread, 1000), "Wait failed.\n");
+    GetExitCodeThread(thread, &ret);
+    CloseHandle(thread);
+    return ret;
+}
+#define join_thread(a) join_thread_(__LINE__, a)
+
+static void test_filter_state(IMemInputPin *input, IFilterGraph2 *graph)
+{
+    IMemAllocator *allocator;
+    IMediaControl *control;
+    IMediaSample *sample;
+    OAFilterState state;
+    HANDLE thread;
+    HRESULT hr;
+
+    IFilterGraph2_QueryInterface(graph, &IID_IMediaControl, (void **)&control);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == VFW_E_WRONG_STATE, "Got hr %#x.\n", hr);
+
+    /* The renderer is not fully paused until it receives a sample. The thread
+     * sending the sample blocks in IMemInputPin_Receive() until the filter is
+     * stopped or run. */
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+
+    hr = IMediaControl_GetState(control, 1000, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+
+    hr = IMediaControl_Stop(control);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    /* The sink will decommit our allocator for us when stopping, however it
+     * will not recommit it when pausing. */
+    hr = IMemInputPin_GetAllocator(input, &allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    hr = IMemAllocator_GetBuffer(allocator, &sample, NULL, NULL, 0);
+    todo_wine ok(hr == VFW_E_NOT_COMMITTED, "Got hr %#x.\n", hr);
+    if (hr == S_OK) IMediaSample_Release(sample);
+
+    hr = IMemAllocator_Commit(allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == VFW_E_WRONG_STATE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+
+    hr = IMediaControl_GetState(control, 1000, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+
+    hr = IMediaControl_Run(control);
+    todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+
+    hr = IMediaControl_GetState(control, 1000, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+
+    hr = IMediaControl_Run(control);
+    todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Stop(control);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMemAllocator_Commit(allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Run(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Stop(control);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    IMemAllocator_Release(allocator);
+    IMediaControl_Release(control);
+}
+
+static void test_flushing(IPin *pin, IMemInputPin *input, IFilterGraph2 *graph)
+{
+    IMemAllocator *allocator;
+    IMediaControl *control;
+    OAFilterState state;
+    HANDLE thread;
+    HRESULT hr;
+
+    IFilterGraph2_QueryInterface(graph, &IID_IMediaControl, (void **)&control);
+
+    hr = IMemInputPin_GetAllocator(input, &allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    hr = IMemAllocator_Commit(allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    IMemAllocator_Release(allocator);
+
+    hr = IMediaControl_Pause(control);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IPin_BeginFlush(pin);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IPin_EndFlush(pin);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    /* We dropped the sample we were holding, so now we need a new one... */
+
+    hr = IMediaControl_GetState(control, 0, &state);
+    todo_wine ok(hr == VFW_S_STATE_INTERMEDIATE, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    ok(WaitForSingleObject(thread, 100) == WAIT_TIMEOUT, "Thread should block in Receive().\n");
+
+    hr = IMediaControl_Run(control);
+    todo_wine ok(hr == S_OK, "Got hr %#x.\n", hr);
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IPin_BeginFlush(pin);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == S_FALSE, "Got hr %#x.\n", hr);
+
+    hr = IPin_EndFlush(pin);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    thread = send_frame(input);
+    hr = join_thread(thread);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    hr = IMediaControl_Stop(control);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    IMediaControl_Release(control);
 }
 
 static void test_connect_pin(void)
@@ -982,9 +1313,12 @@ static void test_connect_pin(void)
         .cbFormat = sizeof(vih),
         .pbFormat = (BYTE *)&vih,
     };
+    ALLOCATOR_PROPERTIES req_props = {1, 32 * 16 * 4, 1, 0}, ret_props;
     IBaseFilter *filter = create_vmr9(VMR9Mode_Windowed);
     IFilterGraph2 *graph = create_graph();
     struct testfilter source;
+    IMemAllocator *allocator;
+    IMemInputPin *input;
     unsigned int i, j;
     AM_MEDIA_TYPE mt;
     IPin *pin, *peer;
@@ -1006,6 +1340,7 @@ static void test_connect_pin(void)
     IFilterGraph2_AddFilter(graph, filter, NULL);
 
     IBaseFilter_FindPin(filter, L"VMR Input0", &pin);
+    IPin_QueryInterface(pin, &IID_IMemInputPin, (void **)&input);
 
     for (i = 0; i < ARRAY_SIZE(subtype_tests); ++i)
     {
@@ -1077,6 +1412,23 @@ static void test_connect_pin(void)
     ok(hr == S_OK, "Got hr %#x.\n", hr);
     ok(compare_media_types(&mt, &req_mt), "Media types didn't match.\n");
 
+    test_allocator(input);
+
+    hr = IMemInputPin_GetAllocator(input, &allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    hr = IMemAllocator_SetProperties(allocator, &req_props, &ret_props);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    ok(!memcmp(&ret_props, &req_props, sizeof(req_props)), "Properties did not match.\n");
+    hr = IMemAllocator_Commit(allocator);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+    IMemAllocator_Release(allocator);
+
+    hr = IMemInputPin_ReceiveCanBlock(input);
+    ok(hr == S_OK, "Got hr %#x.\n", hr);
+
+    test_filter_state(input, graph);
+    test_flushing(pin, input, graph);
+
     hr = IFilterGraph2_Disconnect(graph, pin);
     ok(hr == S_OK, "Got hr %#x.\n", hr);
     hr = IFilterGraph2_Disconnect(graph, pin);
@@ -1093,6 +1445,7 @@ static void test_connect_pin(void)
     ok(hr == VFW_E_NOT_CONNECTED, "Got hr %#x.\n", hr);
 
 out:
+    IMemInputPin_Release(input);
     IPin_Release(pin);
     ref = IFilterGraph2_Release(graph);
     ok(!ref, "Got outstanding refcount %d.\n", ref);

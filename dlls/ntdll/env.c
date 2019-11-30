@@ -526,7 +526,7 @@ char **build_envp( const WCHAR *envW )
     if (!(env = RtlAllocateHeap( GetProcessHeap(), 0, length ))) return NULL;
     ntdll_wcstoumbs( 0, envW, lenW, env, length, NULL, NULL );
 
-    for (p = env; *p; p += strlen(p) + 1)
+    for (p = env; *p; p += strlen(p) + 1, count++)
         if (is_special_env_var( p )) length += 4; /* prefix it with "WINE" */
 
     for (i = 0; i < ARRAY_SIZE( unix_vars ); i++)
@@ -622,8 +622,17 @@ static void get_current_directory( UNICODE_STRING *dir )
         if (!wine_unix_to_nt_file_name( &unix_name, &nt_name ))
         {
             /* skip the \??\ prefix */
-            dir->Length = nt_name.Length - 4 * sizeof(WCHAR);
-            memcpy( dir->Buffer, nt_name.Buffer + 4, dir->Length );
+            if (nt_name.Length > 6 * sizeof(WCHAR*) && nt_name.Buffer[5] == ':')
+            {
+                dir->Length = nt_name.Length - 4 * sizeof(WCHAR);
+                memcpy( dir->Buffer, nt_name.Buffer + 4, dir->Length );
+            }
+            else  /* change \??\ to \\?\ */
+            {
+                dir->Length = nt_name.Length;
+                memcpy( dir->Buffer, nt_name.Buffer, dir->Length );
+                dir->Buffer[1] = '\\';
+            }
             RtlFreeUnicodeString( &nt_name );
         }
     }

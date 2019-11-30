@@ -54,6 +54,12 @@ static const int MonthLengths[2][12] =
     { 31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }
 };
 
+#if _MSVCR_VER>=140
+static const int MAX_SECONDS = 60;
+#else
+static const int MAX_SECONDS = 59;
+#endif
+
 static inline BOOL IsLeapYear(int Year)
 {
     return Year % 4 == 0 && (Year % 100 != 0 || Year % 400 == 0);
@@ -954,89 +960,220 @@ char ** CDECL __p__tzname(void)
 	return MSVCRT__tzname;
 }
 
-static inline BOOL strftime_date(char *str, MSVCRT_size_t *pos, MSVCRT_size_t max,
-        BOOL alternate, const struct MSVCRT_tm *mstm, MSVCRT___lc_time_data *time_data)
-{
-    char *format;
-    SYSTEMTIME st;
-    MSVCRT_size_t ret;
-    LCID lcid;
-
-    st.wYear = mstm->tm_year + 1900;
-    st.wMonth = mstm->tm_mon + 1;
-    st.wDayOfWeek = mstm->tm_wday;
-    st.wDay = mstm->tm_mday;
-    st.wHour = mstm->tm_hour;
-    st.wMinute = mstm->tm_min;
-    st.wSecond = mstm->tm_sec;
-    st.wMilliseconds = 0;
-
-#if _MSVCR_VER < 110
-    lcid = time_data->lcid;
+#if _MSVCR_VER <= 90
+#define STRFTIME_CHAR char
+#define STRFTIME_TD(td, name) td->str.names.name
 #else
-    lcid = LocaleNameToLCID(time_data->locname, 0);
+#define STRFTIME_CHAR MSVCRT_wchar_t
+#define STRFTIME_TD(td, name) td->wstr.names.name
 #endif
 
-    format = alternate ? time_data->str.names.date : time_data->str.names.short_date;
-    ret = GetDateFormatA(lcid, 0, &st, format, NULL, 0);
-    if(ret && ret<max-*pos)
-        ret = GetDateFormatA(lcid, 0, &st, format, str+*pos, max-*pos);
-    if(!ret) {
+#define strftime_str(a,b,c,d) strftime_nstr(a,b,c,d,MSVCRT_SIZE_MAX)
+static inline BOOL strftime_nstr(STRFTIME_CHAR *str, MSVCRT_size_t *pos,
+        MSVCRT_size_t max, const STRFTIME_CHAR *src, MSVCRT_size_t len)
+{
+    while(*src && len)
+    {
+        if(*pos >= max) {
+            *str = 0;
+            *MSVCRT__errno() = MSVCRT_ERANGE;
+            return FALSE;
+        }
+
+        str[*pos] = *src;
+        src++;
+        *pos += 1;
+        len--;
+    }
+    return TRUE;
+}
+
+static inline BOOL strftime_int(STRFTIME_CHAR *str, MSVCRT_size_t *pos, MSVCRT_size_t max,
+        int src, int prec, int l, int h)
+{
+#if _MSVCR_VER > 90
+    static const WCHAR fmt[] = {'%','0','*','d',0};
+#endif
+    MSVCRT_size_t len;
+
+    if(!MSVCRT_CHECK_PMT(src>=l && src<=h)) {
         *str = 0;
-        *MSVCRT__errno() = MSVCRT_EINVAL;
         return FALSE;
-    }else if(ret > max-*pos) {
+    }
+
+#if _MSVCR_VER <= 90
+    len = MSVCRT__snprintf(str+*pos, max-*pos, "%0*d", prec, src);
+#else
+    len = MSVCRT__snwprintf(str+*pos, max-*pos, fmt, prec, src);
+#endif
+    if(len == -1) {
         *str = 0;
         *MSVCRT__errno() = MSVCRT_ERANGE;
         return FALSE;
     }
-    *pos += ret-1;
+
+    *pos += len;
     return TRUE;
 }
 
-static inline BOOL strftime_time(char *str, MSVCRT_size_t *pos, MSVCRT_size_t max,
-        const struct MSVCRT_tm *mstm, MSVCRT___lc_time_data *time_data)
+static inline BOOL strftime_format(STRFTIME_CHAR *str, MSVCRT_size_t *pos, MSVCRT_size_t max,
+        const struct MSVCRT_tm *mstm, MSVCRT___lc_time_data *time_data, const STRFTIME_CHAR *format)
 {
-    SYSTEMTIME st;
-    MSVCRT_size_t ret;
-    LCID lcid;
+    MSVCRT_size_t count;
+    BOOL ret = TRUE;
 
-    st.wYear = mstm->tm_year + 1900;
-    st.wMonth = mstm->tm_mon + 1;
-    st.wDayOfWeek = mstm->tm_wday;
-    st.wDay = mstm->tm_mday;
-    st.wHour = mstm->tm_hour;
-    st.wMinute = mstm->tm_min;
-    st.wSecond = mstm->tm_sec;
-    st.wMilliseconds = 0;
+    while(*format && ret)
+    {
+        count = 1;
+        while(format[0] == format[count]) count++;
 
-#if _MSVCR_VER < 110
-    lcid = time_data->lcid;
+        switch(*format) {
+        case '\'':
+            if(count % 2 == 0) break;
+
+            format += count;
+            count = 0;
+            while(format[count] && format[count] != '\'') count++;
+
+            ret = strftime_nstr(str, pos, max, format, count);
+            if(!ret) return FALSE;
+            if(format[count] == '\'') count++;
+            break;
+        case 'd':
+            if(count > 2)
+            {
+                if(!MSVCRT_CHECK_PMT(mstm->tm_wday>=0 && mstm->tm_wday<=6))
+                {
+                    *str = 0;
+                    return FALSE;
+                }
+            }
+            switch(count) {
+            case 1:
+            case 2:
+                ret = strftime_int(str, pos, max, mstm->tm_mday, count==1 ? 0 : 2, 1, 31);
+                break;
+            case 3:
+                ret = strftime_str(str, pos, max, STRFTIME_TD(time_data, short_wday)[mstm->tm_wday]);
+                break;
+            default:
+                ret = strftime_nstr(str, pos, max, format, count-4);
+                if(ret)
+                    ret = strftime_str(str, pos, max, STRFTIME_TD(time_data, wday)[mstm->tm_wday]);
+                break;
+            }
+            break;
+        case 'M':
+            if(count > 2)
+            {
+                if(!MSVCRT_CHECK_PMT(mstm->tm_mon>=0 && mstm->tm_mon<=11))
+                {
+                    *str = 0;
+                    return FALSE;
+                }
+            }
+            switch(count) {
+            case 1:
+            case 2:
+                ret = strftime_int(str, pos, max, mstm->tm_mon+1, count==1 ? 0 : 2, 1, 12);
+                break;
+            case 3:
+                ret = strftime_str(str, pos, max, STRFTIME_TD(time_data, short_mon)[mstm->tm_mon]);
+                break;
+            default:
+                ret = strftime_nstr(str, pos, max, format, count-4);
+                if(ret)
+                    ret = strftime_str(str, pos, max, STRFTIME_TD(time_data, mon)[mstm->tm_mon]);
+                break;
+            }
+            break;
+        case 'y':
+            if(count > 1)
+            {
+#if _MSVCR_VER>=140
+                if(!MSVCRT_CHECK_PMT(mstm->tm_year >= -1900 && mstm->tm_year <= 8099))
 #else
-    lcid = LocaleNameToLCID(time_data->locname, 0);
+                if(!MSVCRT_CHECK_PMT(mstm->tm_year >= 0))
 #endif
+                {
+                    *str = 0;
+                    return FALSE;
+                }
+            }
 
-    ret = GetTimeFormatA(lcid, 0, &st, time_data->str.names.time, NULL, 0);
-    if(ret && ret<max-*pos)
-        ret = GetTimeFormatA(lcid, 0, &st, time_data->str.names.time,
-                str+*pos, max-*pos);
-    if(!ret) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_EINVAL;
-        return FALSE;
-    }else if(ret > max-*pos) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_ERANGE;
-        return FALSE;
+            switch(count) {
+            case 1:
+                ret = strftime_nstr(str, pos, max, format, 1);
+                break;
+            case 2:
+            case 3:
+                ret = strftime_nstr(str, pos, max, format, count-2);
+                if(ret)
+                    ret = strftime_int(str, pos, max, (mstm->tm_year+1900)%100, 2, 0, 99);
+                break;
+            default:
+                ret = strftime_nstr(str, pos, max, format, count-4);
+                if(ret)
+                    ret = strftime_int(str, pos, max, mstm->tm_year+1900, 4, 0, 9999);
+                break;
+            }
+            break;
+        case 'h':
+            if(!MSVCRT_CHECK_PMT(mstm->tm_hour>=0 && mstm->tm_hour<=23))
+            {
+                *str = 0;
+                return FALSE;
+            }
+            if(count > 2)
+                ret = strftime_nstr(str, pos, max, format, count-2);
+            if(ret)
+                ret = strftime_int(str, pos, max, (mstm->tm_hour + 11) % 12 + 1,
+                        count == 1 ? 0 : 2, 1, 12);
+            break;
+        case 'H':
+            if(count > 2)
+                ret = strftime_nstr(str, pos, max, format, count-2);
+            if(ret)
+                ret = strftime_int(str, pos, max, mstm->tm_hour, count == 1 ? 0 : 2, 0, 23);
+            break;
+        case 'm':
+            if(count > 2)
+                ret = strftime_nstr(str, pos, max, format, count-2);
+            if(ret)
+                ret = strftime_int(str, pos, max, mstm->tm_min, count == 1 ? 0 : 2, 0, 59);
+            break;
+        case 's':
+            if(count > 2)
+                ret = strftime_nstr(str, pos, max, format, count-2);
+            if(ret)
+                ret = strftime_int(str, pos, max, mstm->tm_sec, count == 1 ? 0 : 2, 0, MAX_SECONDS);
+            break;
+        case 'a':
+        case 'A':
+        case 't':
+            if(!MSVCRT_CHECK_PMT(mstm->tm_hour>=0 && mstm->tm_hour<=23))
+            {
+                *str = 0;
+                return FALSE;
+            }
+            ret = strftime_nstr(str, pos, max,
+                    mstm->tm_hour < 12 ? STRFTIME_TD(time_data, am) : STRFTIME_TD(time_data, pm),
+                    (*format == 't' && count == 1) ? 1 : MSVCRT_SIZE_MAX);
+            break;
+        default:
+            ret = strftime_nstr(str, pos, max, format, count);
+            break;
+        }
+        format += count;
     }
-    *pos += ret-1;
-    return TRUE;
+
+    return ret;
 }
 
-static inline BOOL strftime_tzdiff(char *str, MSVCRT_size_t *pos, MSVCRT_size_t max, BOOL is_dst)
+#if _MSVCR_VER>=140
+static inline BOOL strftime_tzdiff(STRFTIME_CHAR *str, MSVCRT_size_t *pos, MSVCRT_size_t max, BOOL is_dst)
 {
     MSVCRT_long tz = MSVCRT___timezone + (is_dst ? MSVCRT__dstbias : 0);
-    MSVCRT_size_t len;
     char sign;
 
     if(tz < 0) {
@@ -1046,60 +1183,21 @@ static inline BOOL strftime_tzdiff(char *str, MSVCRT_size_t *pos, MSVCRT_size_t 
         sign = '-';
     }
 
-    len = MSVCRT__snprintf(str+*pos, max-*pos, "%c%02u%02u", sign, tz/60/60, tz/60%60);
-    if(len == -1) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_ERANGE;
+    if(*pos < max)
+        str[(*pos)++] = sign;
+    if(!strftime_int(str, pos, max, tz/60/60, 2, 0, 99))
         return FALSE;
-    }
-
-    *pos += len;
-    return TRUE;
+    return strftime_int(str, pos, max, tz/60%60, 2, 0, 59);
 }
+#endif
 
-static inline BOOL strftime_str(char *str, MSVCRT_size_t *pos, MSVCRT_size_t max, char *src)
-{
-    MSVCRT_size_t len = strlen(src);
-    if(len > max-*pos) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_ERANGE;
-        return FALSE;
-    }
-
-    memcpy(str+*pos, src, len);
-    *pos += len;
-    return TRUE;
-}
-
-static inline BOOL strftime_int(char *str, MSVCRT_size_t *pos, MSVCRT_size_t max,
-        int src, int prec, int l, int h)
-{
-    MSVCRT_size_t len;
-
-    if(src<l || src>h) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_EINVAL;
-        return FALSE;
-    }
-
-    len = MSVCRT__snprintf(str+*pos, max-*pos, "%0*d", prec, src);
-    if(len == -1) {
-        *str = 0;
-        *MSVCRT__errno() = MSVCRT_ERANGE;
-        return FALSE;
-    }
-
-    *pos += len;
-    return TRUE;
-}
-
-static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *format,
-        const struct MSVCRT_tm *mstm, MSVCRT___lc_time_data *time_data, MSVCRT__locale_t loc)
+static MSVCRT_size_t strftime_impl(STRFTIME_CHAR *str, MSVCRT_size_t max,
+        const STRFTIME_CHAR *format, const struct MSVCRT_tm *mstm,
+        MSVCRT___lc_time_data *time_data, MSVCRT__locale_t loc)
 {
     MSVCRT_size_t ret, tmp;
     BOOL alternate;
-
-    TRACE("(%p %ld %s %p %p)\n", str, max, format, mstm, time_data);
+    int year = mstm ? mstm->tm_year + 1900 : -1;
 
     if(!str || !format) {
         if(str && max)
@@ -1136,31 +1234,33 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
 
         switch(*format) {
         case 'c':
-            if(!strftime_date(str, &ret, max, alternate, mstm, time_data))
+            if(!strftime_format(str, &ret, max, mstm, time_data,
+                    alternate ? STRFTIME_TD(time_data, date) : STRFTIME_TD(time_data, short_date)))
                 return 0;
             if(ret < max)
                 str[ret++] = ' ';
-            if(!strftime_time(str, &ret, max, mstm, time_data))
+            if(!strftime_format(str, &ret, max, mstm, time_data, STRFTIME_TD(time_data, time)))
                 return 0;
             break;
         case 'x':
-            if(!strftime_date(str, &ret, max, alternate, mstm, time_data))
+            if(!strftime_format(str, &ret, max, mstm, time_data,
+                    alternate ? STRFTIME_TD(time_data, date) : STRFTIME_TD(time_data, short_date)))
                 return 0;
             break;
         case 'X':
-            if(!strftime_time(str, &ret, max, mstm, time_data))
+            if(!strftime_format(str, &ret, max, mstm, time_data, STRFTIME_TD(time_data, time)))
                 return 0;
             break;
         case 'a':
             if(!MSVCRT_CHECK_PMT(mstm->tm_wday>=0 && mstm->tm_wday<=6))
                 goto einval_error;
-            if(!strftime_str(str, &ret, max, time_data->str.names.short_wday[mstm->tm_wday]))
+            if(!strftime_str(str, &ret, max, STRFTIME_TD(time_data, short_wday)[mstm->tm_wday]))
                 return 0;
             break;
         case 'A':
             if(!MSVCRT_CHECK_PMT(mstm->tm_wday>=0 && mstm->tm_wday<=6))
                 goto einval_error;
-            if(!strftime_str(str, &ret, max, time_data->str.names.wday[mstm->tm_wday]))
+            if(!strftime_str(str, &ret, max, STRFTIME_TD(time_data, wday)[mstm->tm_wday]))
                 return 0;
             break;
         case 'b':
@@ -1169,48 +1269,50 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
 #endif
             if(!MSVCRT_CHECK_PMT(mstm->tm_mon>=0 && mstm->tm_mon<=11))
                 goto einval_error;
-            if(!strftime_str(str, &ret, max, time_data->str.names.short_mon[mstm->tm_mon]))
+            if(!strftime_str(str, &ret, max, STRFTIME_TD(time_data, short_mon)[mstm->tm_mon]))
                 return 0;
             break;
         case 'B':
             if(!MSVCRT_CHECK_PMT(mstm->tm_mon>=0 && mstm->tm_mon<=11))
                 goto einval_error;
-            if(!strftime_str(str, &ret, max, time_data->str.names.mon[mstm->tm_mon]))
+            if(!strftime_str(str, &ret, max, STRFTIME_TD(time_data, mon)[mstm->tm_mon]))
                 return 0;
             break;
 #if _MSVCR_VER>=140
         case 'C':
-            tmp = (1900+mstm->tm_year)/100;
-            if(!strftime_int(str, &ret, max, tmp, alternate ? 0 : 2, 0, 99))
+            if(!MSVCRT_CHECK_PMT(year>=0 && year<=9999))
+                goto einval_error;
+            if(!strftime_int(str, &ret, max, year/100, alternate ? 0 : 2, 0, 99))
                 return 0;
             break;
 #endif
         case 'd':
-            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 0, 31))
+            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 1, 31))
                 return 0;
             break;
 #if _MSVCR_VER>=140
         case 'D':
+            if(!MSVCRT_CHECK_PMT(year>=0 && year<=9999))
+                goto einval_error;
             if(!strftime_int(str, &ret, max, mstm->tm_mon+1, alternate ? 0 : 2, 1, 12))
                 return 0;
             if(ret < max)
                 str[ret++] = '/';
-            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 0, 31))
+            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 1, 31))
                 return 0;
             if(ret < max)
                 str[ret++] = '/';
-            if(!strftime_int(str, &ret, max, mstm->tm_year%100, alternate ? 0 : 2, 0, 99))
+            if(!strftime_int(str, &ret, max, year%100, alternate ? 0 : 2, 0, 99))
                 return 0;
             break;
         case 'e':
-            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 0, 31))
+            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 1, 31))
                 return 0;
             if(!alternate && str[ret-2] == '0')
                 str[ret-2] = ' ';
             break;
         case 'F':
-            tmp = 1900+mstm->tm_year;
-            if(!strftime_int(str, &ret, max, tmp, alternate ? 0 : 4, 0, 9999))
+            if(!strftime_int(str, &ret, max, year, alternate ? 0 : 4, 0, 9999))
                 return 0;
             if(ret < max)
                 str[ret++] = '-';
@@ -1218,37 +1320,45 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
                 return 0;
             if(ret < max)
                 str[ret++] = '-';
-            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 0, 31))
+            if(!strftime_int(str, &ret, max, mstm->tm_mday, alternate ? 0 : 2, 1, 31))
                 return 0;
             break;
         case 'g':
         case 'G':
-            tmp = 1900 + mstm->tm_year;
-            if (mstm->tm_yday - (mstm->tm_wday ? mstm->tm_wday : 7) + 4 < 0)
-                tmp--;
-            else if(mstm->tm_yday - (mstm->tm_wday ? mstm->tm_wday : 7) + 5 > 365 + IsLeapYear(tmp))
-                tmp++;
-            if(*format == 'G')
-            {
-                if (!strftime_int(str, &ret, max, tmp, 4, 0, 9999))
-                     return 0;
+            if(!MSVCRT_CHECK_PMT(year>=0 && year<=9999))
+                goto einval_error;
+            /* fall through */
+        case 'V':
+        {
+            int iso_year = year;
+            int iso_days = mstm->tm_yday - (mstm->tm_wday ? mstm->tm_wday : 7) + 4;
+            if (iso_days < 0)
+                iso_days += 365 + IsLeapYear(--iso_year);
+            else if(iso_days >= 365 + IsLeapYear(iso_year))
+                iso_days -= 365 + IsLeapYear(iso_year++);
+
+            if(*format == 'G') {
+                if(!strftime_int(str, &ret, max, iso_year, 4, 0, 9999))
+                    return 0;
+            } else if(*format == 'g') {
+                if(!strftime_int(str, &ret, max, iso_year%100, 2, 0, 99))
+                    return 0;
             } else {
-                if (!strftime_int(str, &ret, max, tmp%100, 2, 0, 99))
-                     return 0;
+                if(!strftime_int(str, &ret, max, iso_days/7 + 1, alternate ? 0 : 2, 0, 53))
+                    return 0;
             }
             break;
+        }
 #endif
         case 'H':
             if(!strftime_int(str, &ret, max, mstm->tm_hour, alternate ? 0 : 2, 0, 23))
                 return 0;
             break;
         case 'I':
-            tmp = mstm->tm_hour;
-            if(tmp > 12)
-                tmp -= 12;
-            else if(!tmp)
-                tmp = 12;
-            if(!strftime_int(str, &ret, max, tmp, alternate ? 0 : 2, 1, 12))
+            if(!MSVCRT_CHECK_PMT(mstm->tm_hour>=0 && mstm->tm_hour<=23))
+                goto einval_error;
+            if(!strftime_int(str, &ret, max, (mstm->tm_hour + 11) % 12 + 1,
+                        alternate ? 0 : 2, 1, 12))
                 return 0;
             break;
         case 'j':
@@ -1272,10 +1382,38 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
             if(!MSVCRT_CHECK_PMT(mstm->tm_hour>=0 && mstm->tm_hour<=23))
                 goto einval_error;
             if(!strftime_str(str, &ret, max, mstm->tm_hour<12 ?
-                        time_data->str.names.am : time_data->str.names.pm))
+                        STRFTIME_TD(time_data, am) : STRFTIME_TD(time_data, pm)))
                 return 0;
             break;
 #if _MSVCR_VER>=140
+        case 'r':
+            if(time_data == MSVCRT_locale->locinfo->lc_time_curr)
+            {
+                if(!MSVCRT_CHECK_PMT(mstm->tm_hour>=0 && mstm->tm_hour<=23))
+                    goto einval_error;
+                if(!strftime_int(str, &ret, max, (mstm->tm_hour + 11) % 12 + 1,
+                            alternate ? 0 : 2, 1, 12))
+                    return 0;
+                if(ret < max)
+                    str[ret++] = ':';
+                if(!strftime_int(str, &ret, max, mstm->tm_min, alternate ? 0 : 2, 0, 59))
+                    return 0;
+                if(ret < max)
+                    str[ret++] = ':';
+                if(!strftime_int(str, &ret, max, mstm->tm_sec, alternate ? 0 : 2, 0, MAX_SECONDS))
+                    return 0;
+                if(ret < max)
+                    str[ret++] = ' ';
+                if(!strftime_str(str, &ret, max, mstm->tm_hour<12 ?
+                            STRFTIME_TD(time_data, am) : STRFTIME_TD(time_data, pm)))
+                    return 0;
+            }
+            else
+            {
+                if(!strftime_format(str, &ret, max, mstm, time_data, STRFTIME_TD(time_data, time)))
+                    return 0;
+            }
+            break;
         case 'R':
             if(!strftime_int(str, &ret, max, mstm->tm_hour, alternate ? 0 : 2, 0, 23))
                 return 0;
@@ -1286,7 +1424,7 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
             break;
 #endif
         case 'S':
-            if(!strftime_int(str, &ret, max, mstm->tm_sec, alternate ? 0 : 2, 0, 59))
+            if(!strftime_int(str, &ret, max, mstm->tm_sec, alternate ? 0 : 2, 0, MAX_SECONDS))
                 return 0;
             break;
 #if _MSVCR_VER>=140
@@ -1302,10 +1440,12 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
                 return 0;
             if(ret < max)
                 str[ret++] = ':';
-            if(!strftime_int(str, &ret, max, mstm->tm_sec, alternate ? 0 : 2, 0, 59))
+            if(!strftime_int(str, &ret, max, mstm->tm_sec, alternate ? 0 : 2, 0, MAX_SECONDS))
                 return 0;
             break;
         case 'u':
+            if(!MSVCRT_CHECK_PMT(mstm->tm_wday>=0 && mstm->tm_wday<=6))
+                goto einval_error;
             tmp = mstm->tm_wday ? mstm->tm_wday : 7;
             if(!strftime_int(str, &ret, max, tmp, 0, 1, 7))
                 return 0;
@@ -1317,18 +1457,16 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
             break;
         case 'y':
 #if _MSVCR_VER>=140
-            if(!MSVCRT_CHECK_PMT(mstm->tm_year>=-1900 && mstm->tm_year<=8099))
-                goto einval_error;
-            tmp = (mstm->tm_year+1900)%100;
+            if(!MSVCRT_CHECK_PMT(year>=0 && year<=9999))
 #else
-            tmp = mstm->tm_year%100;
+            if(!MSVCRT_CHECK_PMT(year>=1900))
 #endif
-            if(!strftime_int(str, &ret, max, tmp, alternate ? 0 : 2, 0, 99))
+                goto einval_error;
+            if(!strftime_int(str, &ret, max, year%100, alternate ? 0 : 2, 0, 99))
                 return 0;
             break;
         case 'Y':
-            tmp = 1900+mstm->tm_year;
-            if(!strftime_int(str, &ret, max, tmp, alternate ? 0 : 4, 0, 9999))
+            if(!strftime_int(str, &ret, max, year, alternate ? 0 : 4, 0, 9999))
                 return 0;
             break;
         case 'z':
@@ -1340,8 +1478,15 @@ static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *f
 #endif
         case 'Z':
             MSVCRT__tzset();
+#if _MSVCR_VER <= 90
             if(MSVCRT__get_tzname(&tmp, str+ret, max-ret, mstm->tm_isdst ? 1 : 0))
                 return 0;
+#else
+                if(MSVCRT__mbstowcs_s_l(&tmp, str+ret, max-ret,
+                            mstm->tm_isdst ? tzname_dst : tzname_std,
+                            MSVCRT__TRUNCATE, loc) == MSVCRT_STRUNCATE)
+                    ret = max;
+#endif
             ret += tmp-1;
             break;
         case 'U':
@@ -1386,6 +1531,41 @@ einval_error:
     return 0;
 }
 
+static MSVCRT_size_t strftime_helper(char *str, MSVCRT_size_t max, const char *format,
+        const struct MSVCRT_tm *mstm, MSVCRT___lc_time_data *time_data, MSVCRT__locale_t loc)
+{
+#if _MSVCR_VER <= 90
+    TRACE("(%p %ld %s %p %p %p)\n", str, max, format, mstm, time_data, loc);
+    return strftime_impl(str, max, format, mstm, time_data, loc);
+#else
+    MSVCRT_wchar_t *s, *fmt;
+    MSVCRT_size_t len;
+
+    TRACE("(%p %ld %s %p %p %p)\n", str, max, format, mstm, time_data, loc);
+
+    if (!MSVCRT_CHECK_PMT(str != NULL)) return 0;
+    if (!MSVCRT_CHECK_PMT(max != 0)) return 0;
+    *str = 0;
+    if (!MSVCRT_CHECK_PMT(format != NULL)) return 0;
+
+    len = MSVCRT__mbstowcs_l( NULL, format, 0, loc ) + 1;
+    if (!len || !(fmt = MSVCRT_malloc( len*sizeof(MSVCRT_wchar_t) ))) return 0;
+    MSVCRT__mbstowcs_l(fmt, format, len, loc);
+
+    if ((s = MSVCRT_malloc( max*sizeof(MSVCRT_wchar_t) )))
+    {
+        len = strftime_impl( s, max, fmt, mstm, time_data, loc );
+        if (len)
+            len = MSVCRT__wcstombs_l( str, s, max, loc );
+        MSVCRT_free( s );
+    }
+    else len = 0;
+
+    MSVCRT_free( fmt );
+    return len;
+#endif
+}
+
 #if _MSVCR_VER >= 80
 /********************************************************************
  *     _strftime_l (MSVCR80.@)
@@ -1419,6 +1599,7 @@ static MSVCRT_size_t wcsftime_helper( MSVCRT_wchar_t *str, MSVCRT_size_t max,
         const MSVCRT_wchar_t *format, const struct MSVCRT_tm *mstm,
         MSVCRT___lc_time_data *time_data, MSVCRT__locale_t loc )
 {
+#if _MSVCR_VER <= 90
     char *s, *fmt;
     MSVCRT_size_t len;
 
@@ -1430,7 +1611,7 @@ static MSVCRT_size_t wcsftime_helper( MSVCRT_wchar_t *str, MSVCRT_size_t max,
 
     if ((s = MSVCRT_malloc( max*4 )))
     {
-        if (!strftime_helper( s, max*4, fmt, mstm, time_data, loc )) s[0] = 0;
+        if (!strftime_impl( s, max*4, fmt, mstm, time_data, loc )) s[0] = 0;
         len = MSVCRT__mbstowcs_l( str, s, max, loc );
         MSVCRT_free( s );
     }
@@ -1438,6 +1619,10 @@ static MSVCRT_size_t wcsftime_helper( MSVCRT_wchar_t *str, MSVCRT_size_t max,
 
     MSVCRT_free( fmt );
     return len;
+#else
+    TRACE("%p %ld %s %p %p %p\n", str, max, debugstr_w(format), mstm, time_data, loc);
+    return strftime_impl(str, max, format, mstm, time_data, loc);
+#endif
 }
 
 /*********************************************************************

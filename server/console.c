@@ -143,6 +143,10 @@ struct font_info
 {
     short int width;
     short int height;
+    short int weight;
+    short int pitch_family;
+    WCHAR    *face_name;
+    data_size_t face_len;
 };
 
 struct screen_buffer
@@ -476,6 +480,10 @@ static struct screen_buffer *create_console_output( struct console_input *consol
     screen_buffer->data           = NULL;
     screen_buffer->font.width     = 0;
     screen_buffer->font.height    = 0;
+    screen_buffer->font.weight    = FW_NORMAL;
+    screen_buffer->font.pitch_family  = FIXED_PITCH | FF_DONTCARE;
+    screen_buffer->font.face_name = NULL;
+    screen_buffer->font.face_len  = 0;
     memset( screen_buffer->color_map, 0, sizeof(screen_buffer->color_map) );
     list_add_head( &screen_buffer_list, &screen_buffer->entry );
 
@@ -939,6 +947,8 @@ static int set_console_output_info( struct screen_buffer *screen_buffer,
                                     const struct set_console_output_info_request *req )
 {
     struct console_renderer_event evt;
+    data_size_t font_name_len, offset;
+    WCHAR *font_name;
 
     memset(&evt.u, 0, sizeof(evt.u));
     if (req->mask & SET_CONSOLE_OUTPUT_INFO_CURSOR_GEOM)
@@ -1082,15 +1092,29 @@ static int set_console_output_info( struct screen_buffer *screen_buffer,
 	screen_buffer->max_width  = req->max_width;
 	screen_buffer->max_height = req->max_height;
     }
+    if (req->mask & SET_CONSOLE_OUTPUT_INFO_COLORTABLE)
+    {
+        memcpy( screen_buffer->color_map, get_req_data(), min( get_req_data_size(), sizeof(screen_buffer->color_map) ));
+    }
     if (req->mask & SET_CONSOLE_OUTPUT_INFO_FONT)
     {
         screen_buffer->font.width  = req->font_width;
         screen_buffer->font.height = req->font_height;
-    }
-    if (req->mask & SET_CONSOLE_OUTPUT_INFO_COLORTABLE)
-    {
-        memcpy( screen_buffer->color_map, get_req_data(),
-                min( sizeof(screen_buffer->color_map), get_req_data_size() ));
+        screen_buffer->font.weight = req->font_weight;
+        screen_buffer->font.pitch_family = req->font_pitch_family;
+        offset = req->mask & SET_CONSOLE_OUTPUT_INFO_COLORTABLE ? sizeof(screen_buffer->color_map) : 0;
+        if (get_req_data_size() > offset)
+        {
+            font_name_len = (get_req_data_size() - offset) / sizeof(WCHAR) * sizeof(WCHAR);
+            font_name = mem_alloc( font_name_len );
+            if (font_name)
+            {
+                memcpy( font_name, (char *)get_req_data() + offset, font_name_len );
+                free( screen_buffer->font.face_name );
+                screen_buffer->font.face_name = font_name;
+                screen_buffer->font.face_len  = font_name_len;
+            }
+        }
     }
 
     return 1;
@@ -1226,6 +1250,7 @@ static void screen_buffer_destroy( struct object *obj )
     }
     if (screen_buffer->fd) release_object( screen_buffer->fd );
     free( screen_buffer->data );
+    free( screen_buffer->font.face_name );
 }
 
 static struct fd *screen_buffer_get_fd( struct object *obj )
@@ -1774,6 +1799,8 @@ DECL_HANDLER(set_console_output_info)
 DECL_HANDLER(get_console_output_info)
 {
     struct screen_buffer *screen_buffer;
+    void *data;
+    data_size_t total;
 
     if ((screen_buffer = (struct screen_buffer *)get_handle_obj( current->process, req->handle,
                                                                  FILE_READ_PROPERTIES, &screen_buffer_ops)))
@@ -1794,8 +1821,19 @@ DECL_HANDLER(get_console_output_info)
         reply->max_height     = screen_buffer->max_height;
         reply->font_width     = screen_buffer->font.width;
         reply->font_height    = screen_buffer->font.height;
-        set_reply_data( screen_buffer->color_map,
-                        min( sizeof(screen_buffer->color_map), get_reply_max_size() ));
+        reply->font_weight    = screen_buffer->font.weight;
+        reply->font_pitch_family = screen_buffer->font.pitch_family;
+        total = min( sizeof(screen_buffer->color_map) + screen_buffer->font.face_len, get_reply_max_size() );
+        if (total)
+        {
+            data = set_reply_data_size( total );
+            memcpy( data, screen_buffer->color_map, min( total, sizeof(screen_buffer->color_map) ));
+            if (screen_buffer->font.face_len && total > sizeof(screen_buffer->color_map))
+            {
+                memcpy( (char *)data + sizeof(screen_buffer->color_map), screen_buffer->font.face_name,
+                        min( total - sizeof(screen_buffer->color_map), screen_buffer->font.face_len ));
+            }
+        }
         release_object( screen_buffer );
     }
 }

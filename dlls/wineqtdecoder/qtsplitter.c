@@ -208,21 +208,21 @@ static inline QTInPin *impl_from_IPin(IPin *iface)
  * Base Filter
  */
 
-static IPin *qt_splitter_get_pin(struct strmbase_filter *base, unsigned int index)
+static struct strmbase_pin *qt_splitter_get_pin(struct strmbase_filter *base, unsigned int index)
 {
     QTSplitter *filter = impl_from_strmbase_filter(base);
 
     if (index == 0)
-        return &filter->pInputPin.pin.IPin_iface;
+        return &filter->pInputPin.pin;
     else if (index == 1)
     {
         if (filter->pVideo_Pin)
-            return &filter->pVideo_Pin->pin.pin.IPin_iface;
+            return &filter->pVideo_Pin->pin.pin;
         else if (filter->pAudio_Pin)
-            return &filter->pAudio_Pin->pin.pin.IPin_iface;
+            return &filter->pAudio_Pin->pin.pin;
     }
     else if (index == 2 && filter->pVideo_Pin && filter->pAudio_Pin)
-        return &filter->pAudio_Pin->pin.pin.IPin_iface;
+        return &filter->pAudio_Pin->pin.pin;
 
     return NULL;
 }
@@ -234,14 +234,11 @@ static void qt_splitter_destroy(struct strmbase_filter *iface)
 
     EnterCriticalSection(&filter->csReceive);
     /* Don't need to clean up output pins, disconnecting input pin will do that */
-    IPin_ConnectedTo(&filter->pInputPin.pin.IPin_iface, &peer);
-    if (peer)
-    {
-        IPin_Disconnect(peer);
-        IPin_Release(peer);
-    }
 
-    FreeMediaType(&filter->pInputPin.pin.mtCurrent);
+    if (filter->pInputPin.pin.peer)
+        IPin_Disconnect(filter->pInputPin.pin.peer);
+
+    FreeMediaType(&filter->pInputPin.pin.mt);
     if (filter->pInputPin.pAlloc)
         IMemAllocator_Release(filter->pInputPin.pAlloc);
     filter->pInputPin.pAlloc = NULL;
@@ -1120,7 +1117,7 @@ static HRESULT WINAPI QTInPin_ReceiveConnection(IPin *iface, IPin *pReceivePin, 
 
     if (SUCCEEDED(hr))
     {
-        CopyMediaType(&This->pin.mtCurrent, pmt);
+        CopyMediaType(&This->pin.mt, pmt);
         This->pin.peer = pReceivePin;
         IPin_AddRef(pReceivePin);
         hr = IMemAllocator_Commit(This->pAlloc);

@@ -287,7 +287,7 @@ static void stateblock_savedstates_set_vertex(struct wined3d_saved_states *state
     memset(states->vs_consts_f, TRUE, sizeof(BOOL) * num_constants);
 }
 
-void stateblock_init_contained_states(struct wined3d_stateblock *stateblock)
+void CDECL wined3d_stateblock_init_contained_states(struct wined3d_stateblock *stateblock)
 {
     const struct wined3d_d3d_info *d3d_info = &stateblock->device->adapter->d3d_info;
     unsigned int i, j;
@@ -399,7 +399,7 @@ void stateblock_init_contained_states(struct wined3d_stateblock *stateblock)
     }
 }
 
-static void stateblock_init_lights(struct list *dst_map, struct list *src_map)
+static void stateblock_init_lights(struct list *dst_map, const struct list *src_map)
 {
     unsigned int i;
 
@@ -761,13 +761,14 @@ static void wined3d_state_record_lights(struct wined3d_light_state *dst_state,
     }
 }
 
-void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock)
+void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock,
+        const struct wined3d_stateblock *device_state)
 {
-    const struct wined3d_stateblock_state *state = &stateblock->device->stateblock_state;
+    const struct wined3d_stateblock_state *state = &device_state->stateblock_state;
     unsigned int i;
     DWORD map;
 
-    TRACE("stateblock %p.\n", stateblock);
+    TRACE("stateblock %p, device_state %p.\n", stateblock, device_state);
 
     if (stateblock->changed.vertexShader && stateblock->stateblock_state.vs != state->vs)
     {
@@ -1033,14 +1034,15 @@ void CDECL wined3d_stateblock_capture(struct wined3d_stateblock *stateblock)
     TRACE("Capture done.\n");
 }
 
-void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock)
+void CDECL wined3d_stateblock_apply(const struct wined3d_stateblock *stateblock,
+        struct wined3d_stateblock *device_state)
 {
-    struct wined3d_stateblock_state *state = &stateblock->device->stateblock_state;
+    struct wined3d_stateblock_state *state = &device_state->stateblock_state;
     struct wined3d_device *device = stateblock->device;
     unsigned int i;
     DWORD map;
 
-    TRACE("Applying stateblock %p to device %p.\n", stateblock, device);
+    TRACE("stateblock %p, device_state %p.\n", stateblock, device_state);
 
     if (stateblock->changed.vertexShader)
     {
@@ -1999,7 +2001,7 @@ void wined3d_stateblock_state_init(struct wined3d_stateblock_state *state,
 
 }
 
-static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
+static HRESULT stateblock_init(struct wined3d_stateblock *stateblock, const struct wined3d_stateblock *device_state,
         struct wined3d_device *device, enum wined3d_stateblock_type type)
 {
     const struct wined3d_d3d_info *d3d_info = &device->adapter->d3d_info;
@@ -2020,7 +2022,7 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
     {
         case WINED3D_SBT_ALL:
             stateblock_init_lights(stateblock->stateblock_state.light_state.light_map,
-                    device->stateblock_state.light_state.light_map);
+                    device_state->stateblock_state.light_state.light_map);
             stateblock_savedstates_set_all(&stateblock->changed,
                     d3d_info->limits.vs_uniform_count_swvp, d3d_info->limits.ps_uniform_count);
             break;
@@ -2032,7 +2034,7 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
 
         case WINED3D_SBT_VERTEX_STATE:
             stateblock_init_lights(stateblock->stateblock_state.light_state.light_map,
-                    device->stateblock_state.light_state.light_map);
+                    device_state->stateblock_state.light_state.light_map);
             stateblock_savedstates_set_vertex(&stateblock->changed,
                     d3d_info->limits.vs_uniform_count_swvp);
             break;
@@ -2042,8 +2044,8 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
             break;
     }
 
-    stateblock_init_contained_states(stateblock);
-    wined3d_stateblock_capture(stateblock);
+    wined3d_stateblock_init_contained_states(stateblock);
+    wined3d_stateblock_capture(stateblock, device_state);
 
     /* According to the tests, stream offset is not updated in the captured state if
      * the state was captured on state block creation. This is not the case for
@@ -2054,19 +2056,19 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock,
     return WINED3D_OK;
 }
 
-HRESULT CDECL wined3d_stateblock_create(struct wined3d_device *device,
+HRESULT CDECL wined3d_stateblock_create(struct wined3d_device *device, const struct wined3d_stateblock *device_state,
         enum wined3d_stateblock_type type, struct wined3d_stateblock **stateblock)
 {
     struct wined3d_stateblock *object;
     HRESULT hr;
 
-    TRACE("device %p, type %#x, stateblock %p.\n",
-            device, type, stateblock);
+    TRACE("device %p, device_state %p, type %#x, stateblock %p.\n",
+            device, device_state, type, stateblock);
 
     if (!(object = heap_alloc_zero(sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    hr = stateblock_init(object, device, type);
+    hr = stateblock_init(object, device_state, device, type);
     if (FAILED(hr))
     {
         WARN("Failed to initialize stateblock, hr %#x.\n", hr);

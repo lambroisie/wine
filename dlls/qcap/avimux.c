@@ -40,7 +40,7 @@ WINE_DEFAULT_DEBUG_CHANNEL(qcap);
 #define ALIGN(x) ((x+1)/2*2)
 
 typedef struct {
-    BaseInputPin pin;
+    struct strmbase_sink pin;
     IAMStreamControl IAMStreamControl_iface;
     IPropertyBag IPropertyBag_iface;
     IQualityControl IQualityControl_iface;
@@ -113,14 +113,14 @@ static inline AviMux* impl_from_strmbase_filter(struct strmbase_filter *filter)
     return CONTAINING_RECORD(filter, AviMux, filter);
 }
 
-static IPin *avi_mux_get_pin(struct strmbase_filter *iface, unsigned int index)
+static struct strmbase_pin *avi_mux_get_pin(struct strmbase_filter *iface, unsigned int index)
 {
     AviMux *filter = impl_from_strmbase_filter(iface);
 
     if (!index)
-        return &filter->source.pin.IPin_iface;
+        return &filter->source.pin;
     else if (index <= filter->input_pin_no)
-        return &filter->in[index - 1]->pin.pin.IPin_iface;
+        return &filter->in[index - 1]->pin.pin;
     return NULL;
 }
 
@@ -1380,7 +1380,7 @@ static HRESULT sink_query_accept(struct strmbase_pin *base, const AM_MEDIA_TYPE 
     return S_FALSE;
 }
 
-static HRESULT WINAPI AviMuxIn_Receive(BaseInputPin *base, IMediaSample *pSample)
+static HRESULT WINAPI AviMuxIn_Receive(struct strmbase_sink *base, IMediaSample *pSample)
 {
     AviMux *avimux = impl_from_strmbase_filter(base->pin.filter);
     AviMuxIn *avimuxin = CONTAINING_RECORD(base, AviMuxIn, pin);
@@ -1416,7 +1416,7 @@ static HRESULT WINAPI AviMuxIn_Receive(BaseInputPin *base, IMediaSample *pSample
         size = IMediaSample_GetActualDataLength(pSample);
     }
 
-    if(!avimuxin->pin.pin.mtCurrent.bTemporalCompression)
+    if(!avimuxin->pin.pin.mt.bTemporalCompression)
         flags |= AM_SAMPLE_SPLICEPOINT;
 
     hr = IMediaSample_GetTime(pSample, &start, &stop);
@@ -1483,7 +1483,7 @@ static HRESULT WINAPI AviMuxIn_Receive(BaseInputPin *base, IMediaSample *pSample
     return hr;
 }
 
-static const BaseInputPinFuncTable AviMuxIn_BaseInputFuncTable =
+static const struct strmbase_sink_ops sink_ops =
 {
     .base.pin_query_accept = sink_query_accept,
     .base.pin_get_media_type = strmbase_pin_get_media_type,
@@ -1698,8 +1698,7 @@ static const IAMStreamControlVtbl AviMuxIn_AMStreamControlVtbl = {
 
 static inline AviMuxIn* AviMuxIn_from_IMemInputPin(IMemInputPin *iface)
 {
-    BaseInputPin *bip = CONTAINING_RECORD(iface, BaseInputPin, IMemInputPin_iface);
-    return CONTAINING_RECORD(bip, AviMuxIn, pin);
+    return CONTAINING_RECORD(iface, AviMuxIn, pin.IMemInputPin_iface);
 }
 
 static HRESULT WINAPI AviMuxIn_MemInputPin_QueryInterface(
@@ -1945,8 +1944,7 @@ static HRESULT create_input_pin(AviMux *avimux)
     if (!(object = heap_alloc_zero(sizeof(*object))))
         return E_OUTOFMEMORY;
 
-    strmbase_sink_init(&object->pin, &AviMuxIn_PinVtbl, &avimux->filter, name,
-            &AviMuxIn_BaseInputFuncTable, NULL);
+    strmbase_sink_init(&object->pin, &AviMuxIn_PinVtbl, &avimux->filter, name, &sink_ops, NULL);
     object->pin.IMemInputPin_iface.lpVtbl = &AviMuxIn_MemInputPinVtbl;
     object->IAMStreamControl_iface.lpVtbl = &AviMuxIn_AMStreamControlVtbl;
     object->IPropertyBag_iface.lpVtbl = &AviMuxIn_PropertyBagVtbl;

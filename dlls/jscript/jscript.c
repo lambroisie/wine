@@ -130,7 +130,7 @@ static void clear_script_queue(JScript *This)
 
 static void clear_persistent_code_list(JScript *This)
 {
-    while(!list_empty(&This->queued_code))
+    while(!list_empty(&This->persistent_code))
     {
         bytecode_t *iter = LIST_ENTRY(list_head(&This->persistent_code), bytecode_t, entry);
         list_remove(&iter->entry);
@@ -606,7 +606,7 @@ static HRESULT WINAPI JScript_GetScriptDispatch(IActiveScript *iface, LPCOLESTR 
 {
     JScript *This = impl_from_IActiveScript(iface);
 
-    TRACE("(%p)->(%p)\n", This, ppdisp);
+    TRACE("(%p)->(%s %p)\n", This, debugstr_w(pstrItemName), ppdisp);
 
     if(!ppdisp)
         return E_POINTER;
